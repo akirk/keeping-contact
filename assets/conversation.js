@@ -599,6 +599,14 @@
 		});
 	};
 
+	// AI Assistant toggle
+	window.toggleAiAssistant = function() {
+		var main = document.querySelector('.draft-main');
+		if (main) {
+			main.classList.toggle('ai-assistant-visible');
+		}
+	};
+
 	// Initialize on DOM ready
 	document.addEventListener('DOMContentLoaded', function() {
 		// Style example click handlers

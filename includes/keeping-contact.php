@@ -340,7 +340,7 @@ class KeepingContact {
 		$app->route( 'outreach/{person}', KEEPING_CONTACT_PATH . 'person-outreach.php' );
 		$app->route( 'outreach-settings', KEEPING_CONTACT_PATH . 'settings.php' );
 		$app->route( 'outreach-beeper', KEEPING_CONTACT_PATH . 'beeper-audit.php' );
-		$app->route( 'draft/{person}', KEEPING_CONTACT_PATH . 'draft-message.php' );
+		$app->route( 'conversations/{person}', KEEPING_CONTACT_PATH . 'conversation.php' );
 	}
 
 	public static function get_globals() {
@@ -471,7 +471,7 @@ class KeepingContact {
 	 */
 	public function render_quick_links( $person, $is_team_member, $group_data ) {
 		?>
-		<a href="<?php echo esc_url( $this->crm->build_url( 'draft', array( 'person' => $person->username ) ) ); ?>"
+		<a href="<?php echo esc_url( $this->crm->build_url( 'conversations', array( 'person' => $person->username ) ) ); ?>"
 		   class="quick-link"
 		   title="Send a message">
 			✏️ Send message
@@ -689,8 +689,8 @@ class KeepingContact {
 			unset( $params['person'] );
 		}
 
-		if ( str_contains( $base_url, 'draft' ) && isset( $params['person'] ) ) {
-			$url = home_url( '/crm/draft/' . $params['person'] );
+		if ( str_contains( $base_url, 'conversations' ) && isset( $params['person'] ) ) {
+			$url = home_url( '/crm/conversations/' . $params['person'] );
 			unset( $params['person'] );
 		}
 

@@ -117,7 +117,7 @@ $ollama_model = PersonalCrm::get_ollama_model();
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<meta name="color-scheme" content="light dark">
-	<title><?php echo function_exists( 'wp_app_title' ) ? wp_app_title( 'Draft: ' . $person->get_display_name_with_nickname() ) : 'Draft: ' . $person->get_display_name_with_nickname(); ?></title>
+	<title><?php echo function_exists( 'wp_app_title' ) ? wp_app_title( 'Conversation with ' . $person->get_display_name_with_nickname() ) : 'Conversation with ' . $person->get_display_name_with_nickname(); ?></title>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_style' ) ) {
 		wp_app_enqueue_style( 'personal-crm-style', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/style.css' );
@@ -134,25 +134,20 @@ $ollama_model = PersonalCrm::get_ollama_model();
 	<div class="container">
 		<div class="header">
 			<div class="header-content">
-				<h1>Draft Message</h1>
+				<h1>Conversation with <?php echo esc_html( $person->get_display_name_with_nickname() ); ?></h1>
 				<div class="header-subtitle">
 					<a href="<?php echo esc_url( $person->get_profile_url() ); ?>" class="back-link">← Back to <?php echo esc_html( $person->get_display_name_with_nickname() ); ?></a>
 				</div>
 			</div>
+			<?php if ( $person->email ) : ?>
+				<a href="<?php echo esc_url( $person->get_profile_url() ); ?>">
+					<img src="<?php echo esc_url( $person->get_gravatar_url( 60 ) ); ?>" alt="" class="header-avatar">
+				</a>
+			<?php endif; ?>
 		</div>
 
 		<div class="draft-layout">
 			<div class="draft-sidebar">
-				<div class="person-link">
-					<?php if ( $person->email ) : ?>
-						<img src="<?php echo esc_url( $person->get_gravatar_url( 60 ) ); ?>" alt="" class="person-avatar">
-					<?php endif; ?>
-					<div class="person-info">
-						<h2><?php echo esc_html( $person->get_display_name_with_nickname() ); ?></h2>
-						<a href="<?php echo esc_url( $person->get_profile_url() ); ?>">View Profile</a>
-					</div>
-				</div>
-
 				<?php if ( $schedule && ! empty( $schedule['notes'] ) ) : ?>
 					<div class="context-section">
 						<h4>Notes</h4>
@@ -206,7 +201,7 @@ $ollama_model = PersonalCrm::get_ollama_model();
 				<?php endif; ?>
 
 				<?php if ( ! empty( $user_message_samples ) ) : ?>
-					<div class="style-examples-section">
+					<div class="style-examples-section ai-assistant-section">
 						<div class="style-examples-header">
 							<h4>My Writing Style</h4>
 							<div class="context-controls">
@@ -250,15 +245,17 @@ $ollama_model = PersonalCrm::get_ollama_model();
 					}
 				?>
 					<div class="conversation-context">
-						<div class="conversation-context-header">
-							<h4>Conversation Context</h4>
+						<div class="conversation-context-header ai-assistant-section">
+							<div>
+								<h4>Conversation Context</h4>
+								<p class="context-hint">Click to include/exclude what to talk about</p>
+							</div>
 							<div class="context-controls">
 								<span class="context-count" id="conversationCount"></span>
 								<button type="button" class="btn-context-toggle" onclick="toggleAllContext(true)">All</button>
 								<button type="button" class="btn-context-toggle" onclick="toggleAllContext(false)">None</button>
 							</div>
 						</div>
-						<p class="context-hint">Click to include/exclude what to talk about</p>
 						<div class="conversation-groups-scroll">
 							<?php if ( $has_more_messages && $next_cursor ) : ?>
 								<div class="load-more-container" id="loadMoreContainer">
@@ -297,7 +294,7 @@ $ollama_model = PersonalCrm::get_ollama_model();
 					</div>
 				<?php endif; ?>
 
-				<div class="ai-draft-section">
+				<div class="ai-draft-section ai-assistant-section">
 					<div class="ai-draft-header">
 						<h4>AI Draft Assistant</h4>
 						<div class="ai-model-selector">
@@ -356,10 +353,13 @@ $ollama_model = PersonalCrm::get_ollama_model();
 					<h4>Your Message</h4>
 					<textarea id="draftMessage" rows="6" placeholder="Write your message here..."></textarea>
 					<div class="draft-actions">
-						<button type="button" class="btn btn-secondary" onclick="copyDraft()">Copy to Clipboard</button>
-						<?php if ( $active_chat && $beeper->is_configured() ) : ?>
-							<button type="button" class="btn btn-primary" onclick="sendViaBeeper()">Send via Beeper</button>
-						<?php endif; ?>
+						<button type="button" class="btn-ai-toggle" onclick="toggleAiAssistant()">AI Assistant</button>
+						<div class="draft-actions-right">
+							<button type="button" class="btn btn-secondary" onclick="copyDraft()">Copy to Clipboard</button>
+							<?php if ( $active_chat && $beeper->is_configured() ) : ?>
+								<button type="button" class="btn btn-primary" onclick="sendViaBeeper()">Send via Beeper</button>
+							<?php endif; ?>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -389,9 +389,9 @@ $ollama_model = PersonalCrm::get_ollama_model();
 	</script>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_script' ) ) {
-		wp_app_enqueue_script( 'kc-draft-message', plugin_dir_url( __FILE__ ) . 'assets/draft-message.js', [], '1.0', true );
+		wp_app_enqueue_script( 'kc-conversation', plugin_dir_url( __FILE__ ) . 'assets/conversation.js', [], '1.0', true );
 	} else {
-		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/draft-message.js' ) . '"></script>';
+		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/conversation.js' ) . '"></script>';
 	}
 	?>
 

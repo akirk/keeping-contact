@@ -37,6 +37,13 @@ img.emoji {
 	margin-top: 5px;
 }
 
+.header-avatar {
+	width: 50px;
+	height: 50px;
+	border-radius: 50%;
+	background: var(--kc-badge-bg);
+}
+
 .nav-separator {
 	margin: 0 8px;
 	color: light-dark(#ccc, #444);
@@ -929,6 +936,12 @@ img.emoji {
 	border-top: 1px solid var(--kc-border-color);
 }
 
+.context-section:first-child {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: none;
+}
+
 .context-section h4 {
 	margin: 0 0 8px;
 	font-size: 0.85em;
@@ -1080,7 +1093,13 @@ img.emoji {
 	display: flex;
 	gap: 10px;
 	margin-top: 12px;
-	justify-content: flex-end;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.draft-actions-right {
+	display: flex;
+	gap: 10px;
 }
 
 /* Overdue sidebar */
@@ -1435,11 +1454,15 @@ img.emoji {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
-	margin-bottom: 4px;
+	margin-bottom: 10px;
 }
 
 .conversation-context-header h4 {
 	margin: 0;
+}
+
+.conversation-context-header .context-hint {
+	margin: 2px 0 0;
 }
 
 .context-controls {
@@ -1468,7 +1491,7 @@ img.emoji {
 }
 
 .context-hint {
-	margin: 0 0 10px;
+	margin: 0;
 	font-size: 0.8em;
 	color: var(--kc-text-muted);
 }
@@ -1542,7 +1565,7 @@ img.emoji {
 	color: var(--kc-text-muted);
 }
 
-.conversation-group[data-selected="false"] .message-list {
+.ai-assistant-visible .conversation-group[data-selected="false"] .message-list {
 	display: none;
 }
 
@@ -1598,4 +1621,49 @@ img.emoji {
 .btn-load-more:hover {
 	background: var(--kc-btn-hover-bg);
 	text-decoration: none;
+}
+
+/* AI Assistant toggle */
+.ai-assistant-section {
+	display: none;
+}
+
+.ai-assistant-visible .ai-assistant-section {
+	display: block;
+}
+
+.conversation-group-footer {
+	display: none;
+}
+
+.ai-assistant-visible .conversation-group-footer {
+	display: flex;
+}
+
+.conversation-group[data-selected="false"] {
+	opacity: 1;
+}
+
+.ai-assistant-visible .conversation-group[data-selected="false"] {
+	opacity: 0.6;
+}
+
+.btn-ai-toggle {
+	padding: 6px 12px;
+	font-size: 0.85em;
+	background: var(--kc-bg-subtle);
+	border: 1px solid var(--kc-border-color);
+	border-radius: 4px;
+	cursor: pointer;
+	color: var(--kc-text-muted);
+}
+
+.btn-ai-toggle:hover {
+	color: var(--kc-link-color);
+	border-color: var(--kc-link-color);
+}
+
+.ai-assistant-visible .btn-ai-toggle {
+	color: var(--kc-link-color);
+	border-color: var(--kc-link-color);
 }
