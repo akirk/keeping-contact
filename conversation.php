@@ -191,6 +191,14 @@ $ollama_model = PersonalCrm::get_ollama_model();
 						<?php endif; ?>
 					</div>
 				</div>
+
+				<?php if ( $active_chat && $beeper->is_configured() ) : ?>
+				<div class="context-section">
+					<a href="<?php echo esc_url( $crm->build_url( 'analysis', array( 'person' => $username ) ) ); ?>" class="sidebar-link">
+						Relationship Analysis
+					</a>
+				</div>
+				<?php endif; ?>
 			</div>
 
 			<div class="draft-main">

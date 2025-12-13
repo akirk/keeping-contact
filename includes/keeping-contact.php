@@ -33,6 +33,7 @@ class KeepingContact {
 		add_action( 'personal_crm_dashboard_sidebar', [ $this, 'render_dashboard_sidebar' ], 20, 2 );
 		add_filter( 'personal_crm_build_url', [ $this, 'build_clean_urls' ], 10, 2 );
 		add_action( 'wp_app_admin_bar_menu', [ $this, 'add_masterbar_menu' ] );
+		add_action( 'personal_crm_footer_links', [ $this, 'render_group_analysis_link' ], 10, 2 );
 	}
 
 	/**
@@ -341,6 +342,8 @@ class KeepingContact {
 		$app->route( 'outreach-settings', KEEPING_CONTACT_PATH . 'settings.php' );
 		$app->route( 'outreach-beeper', KEEPING_CONTACT_PATH . 'beeper-audit.php' );
 		$app->route( 'conversations/{person}', KEEPING_CONTACT_PATH . 'conversation.php' );
+		$app->route( 'analysis/{person}', KEEPING_CONTACT_PATH . 'analysis.php' );
+		$app->route( 'analysis-group/{group}', KEEPING_CONTACT_PATH . 'analysis-group.php' );
 	}
 
 	public static function get_globals() {
@@ -678,6 +681,20 @@ class KeepingContact {
 	}
 
 	/**
+	 * Render Group Analysis link in group page footer
+	 */
+	public function render_group_analysis_link( $group_data, $current_group ) {
+		if ( ! $this->beeper->is_configured() || empty( $current_group ) ) {
+			return;
+		}
+
+		$url = $this->crm->build_url( 'analysis-group', [ 'group' => $current_group ] );
+		?>
+		<a href="<?php echo esc_url( $url ); ?>" class="footer-link">📊 Group Analysis</a>
+		<?php
+	}
+
+	/**
 	 * Build clean URLs for outreach and draft routes
 	 */
 	public function build_clean_urls( $url_data, $base_url ) {
@@ -691,6 +708,14 @@ class KeepingContact {
 
 		if ( str_contains( $base_url, 'conversations' ) && isset( $params['person'] ) ) {
 			$url = home_url( '/crm/conversations/' . $params['person'] );
+			unset( $params['person'] );
+		}
+
+		if ( str_contains( $base_url, 'analysis-group' ) && isset( $params['group'] ) ) {
+			$url = home_url( '/crm/analysis-group/' . $params['group'] );
+			unset( $params['group'] );
+		} elseif ( str_contains( $base_url, 'analysis' ) && isset( $params['person'] ) ) {
+			$url = home_url( '/crm/analysis/' . $params['person'] );
 			unset( $params['person'] );
 		}
 
