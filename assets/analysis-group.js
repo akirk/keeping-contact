@@ -8,6 +8,7 @@
 	var config = window.kcGroupAnalysisConfig || {};
 	var results = {};
 	var currentSort = { column: 'total', ascending: false };
+	var MESSAGE_LIMIT = 5000;
 
 	function getDateLimit() {
 		var limit = new Date();
@@ -42,6 +43,11 @@
 			var reachedLimit = false;
 
 			for (var i = 0; i < messages.length; i++) {
+				if (allMessages.length >= MESSAGE_LIMIT) {
+					reachedLimit = true;
+					break;
+				}
+
 				var msg = messages[i];
 				var msgDate = new Date(msg.date);
 
@@ -439,9 +445,27 @@
 		}
 
 		renderInsights();
+		renderTimeframe();
 
 		document.getElementById('analysisLoading').style.display = 'none';
 		document.getElementById('analysisContent').style.display = 'block';
+	}
+
+	function renderTimeframe() {
+		var dateLimit = getDateLimit();
+		var now = new Date();
+		var opts = { month: 'short', day: 'numeric', year: 'numeric' };
+
+		var totalMessages = 0;
+		Object.keys(results).forEach(function(username) {
+			if (results[username].stats) {
+				totalMessages += results[username].stats.total;
+			}
+		});
+
+		var text = dateLimit.toLocaleDateString('en-US', opts) + ' — ' + now.toLocaleDateString('en-US', opts);
+		text += ' · ' + totalMessages.toLocaleString() + ' messages';
+		document.getElementById('analysisTimeframe').textContent = text;
 	}
 
 	document.addEventListener('DOMContentLoaded', init);

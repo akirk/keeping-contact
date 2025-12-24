@@ -870,8 +870,14 @@ img.emoji {
 	border-bottom: none;
 }
 
-.kc-beeper-chat-info {
+a.kc-beeper-chat-info {
 	font-size: 0.9em;
+	text-decoration: none;
+	color: inherit;
+}
+
+a.kc-beeper-chat-info:hover {
+	color: var(--kc-link-color);
 }
 
 .kc-beeper-chat-network {
@@ -897,6 +903,24 @@ img.emoji {
 }
 
 .kc-beeper-add:hover {
+	border-color: var(--kc-link-color);
+	color: var(--kc-link-color);
+}
+
+.kc-beeper-analysis-link {
+	display: block;
+	margin-top: 12px;
+	padding: 8px 10px;
+	background: var(--kc-bg-subtle);
+	border: 1px solid var(--kc-border-color);
+	border-radius: 4px;
+	text-decoration: none;
+	color: inherit;
+	font-size: 0.85em;
+	text-align: center;
+}
+
+.kc-beeper-analysis-link:hover {
 	border-color: var(--kc-link-color);
 	color: var(--kc-link-color);
 }
@@ -1701,19 +1725,74 @@ img.emoji {
 	font-size: 0.9em;
 }
 
-.analysis-load-more {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	margin-bottom: 20px;
-	padding: 12px 16px;
-	background: var(--kc-bg-subtle);
-	border-radius: 6px;
+.analysis-loading-progress {
+	font-variant-numeric: tabular-nums;
+	min-width: 280px;
 }
 
-.analysis-load-more-hint {
+.analysis-loading-range {
+	margin: 4px 0 0;
 	font-size: 0.85em;
-	color: var(--kc-text-muted);
+	color: light-dark(#666, #999);
+	min-height: 1.2em;
+}
+
+.analysis-loading-bar-container {
+	margin: 16px auto 0;
+	width: 200px;
+}
+
+.analysis-loading-bar {
+	display: flex;
+	height: 8px;
+	border-radius: 4px;
+	overflow: hidden;
+	background: light-dark(#f0f0f0, #333);
+}
+
+.analysis-loading-bar-you {
+	background: light-dark(#0066cc, #4da6ff);
+	transition: width 0.2s ease;
+}
+
+.analysis-loading-bar-them {
+	background: #28a745;
+	transition: width 0.2s ease;
+}
+
+.analysis-loading-bar-labels {
+	display: flex;
+	justify-content: space-between;
+	margin-top: 6px;
+	font-size: 0.8em;
+	color: light-dark(#666, #999);
+	font-variant-numeric: tabular-nums;
+}
+
+.analysis-timeframe {
+	margin: 0 0 20px;
+	font-size: 0.95em;
+	color: light-dark(#666, #999);
+	text-align: center;
+}
+
+.analysis-timeframe a.load-more-link {
+	color: light-dark(#0066cc, #4da6ff);
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.analysis-timeframe a.load-more-link:hover {
+	text-decoration: underline;
+}
+
+.analysis-timeframe a.load-more-link.hidden {
+	display: none;
+}
+
+.analysis-timeframe a.load-more-link.loading {
+	pointer-events: none;
+	opacity: 0.6;
 }
 
 .analysis-stats {
@@ -1749,10 +1828,25 @@ img.emoji {
 	margin-top: 4px;
 }
 
+.analysis-row {
+	display: flex;
+	gap: 40px;
+	margin-top: 30px;
+	padding-top: 20px;
+	border-top: 1px solid light-dark(#e0e0e0, #333);
+}
+
+.analysis-row .analysis-section {
+	flex: 1;
+	margin-top: 0;
+	padding-top: 0;
+	border-top: none;
+}
+
 .analysis-section {
 	margin-top: 30px;
 	padding-top: 20px;
-	border-top: 1px solid var(--kc-border-color);
+	border-top: 1px solid light-dark(#e0e0e0, #333);
 }
 
 .analysis-section h3 {
@@ -1811,6 +1905,26 @@ img.emoji {
 	min-width: 8px;
 	flex: 1;
 	max-width: 20px;
+	position: relative;
+	cursor: help;
+}
+
+.timeline-bar:hover::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	bottom: 100%;
+	left: 0;
+	background: light-dark(#fff, #2d2d2d);
+	border: 1px solid light-dark(#e0e0e0, #444);
+	border-radius: 4px;
+	padding: 6px 10px;
+	font-size: 0.8em;
+	white-space: pre-line;
+	z-index: 100;
+	box-shadow: 0 2px 8px light-dark(rgba(0,0,0,0.15), rgba(0,0,0,0.4));
+	pointer-events: none;
+	min-width: 140px;
+	text-align: center;
 }
 
 .timeline-bar-you {
@@ -1848,6 +1962,55 @@ img.emoji {
 
 .timeline-legend-color.them {
 	background: var(--kc-status-on-track);
+}
+
+.week-frequency-container {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	max-width: 400px;
+	margin-bottom: 20px;
+}
+
+.frequency-bar {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-end;
+	flex: 1;
+	height: 70px;
+	position: relative;
+}
+
+.frequency-bar-fill {
+	width: 100%;
+	background: var(--kc-link-color);
+	border-radius: 3px 3px 0 0;
+	cursor: help;
+}
+
+.frequency-bar:hover::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	top: -8px;
+	left: 50%;
+	transform: translate(-50%, -100%);
+	background: light-dark(#fff, #2d2d2d);
+	border: 1px solid light-dark(#e0e0e0, #444);
+	border-radius: 4px;
+	padding: 4px 8px;
+	font-size: 0.8em;
+	white-space: nowrap;
+	z-index: 100;
+	box-shadow: 0 2px 8px light-dark(rgba(0,0,0,0.15), rgba(0,0,0,0.4));
+	pointer-events: none;
+}
+
+.frequency-bar-label {
+	position: absolute;
+	bottom: -20px;
+	font-size: 0.75em;
+	color: var(--kc-text-muted);
 }
 
 .sessions-stats {
@@ -1995,4 +2158,50 @@ img.emoji {
 
 .insight-card li {
 	margin-bottom: 4px;
+}
+
+/* Quick Schedule Buttons */
+.kc-schedule-list li {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+}
+
+.kc-quick-schedule {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+}
+
+.kc-quick-schedule button {
+	padding: 2px 6px;
+	font-size: 0.75em;
+	border: 1px solid var(--kc-border-color);
+	border-radius: 3px;
+	background: var(--kc-btn-bg);
+	color: var(--kc-text-muted);
+	cursor: pointer;
+}
+
+.kc-quick-schedule button:hover {
+	border-color: var(--kc-link-color);
+	color: var(--kc-link-color);
+}
+
+.kc-quick-schedule button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* Beeper subsection within Keeping Contact */
+.kc-beeper-subsection {
+	margin-top: 15px;
+	padding-top: 15px;
+	border-top: 1px solid var(--kc-border-color);
+}
+
+/* No schedule badge */
+.status-badge.no-schedule {
+	background: var(--kc-text-secondary);
 }

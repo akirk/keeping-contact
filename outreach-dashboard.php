@@ -100,12 +100,12 @@ $format_days = function( $days, $last_date ) {
 		<div class="header">
 			<div class="header-content">
 				<h1>Keeping Contact</h1>
-				<div class="header-subtitle">
-					<a href="<?php echo $crm->build_url( 'index.php' ); ?>" class="back-link">← Back to Groups</a>
+				<div class="back-nav">
+					<a href="<?php echo $crm->build_url( 'index.php' ); ?>">← Back to Groups</a>
 					<span class="nav-separator">|</span>
-					<a href="<?php echo esc_url( $crm->build_url( 'outreach-beeper' ) ); ?>" class="back-link">Beeper</a>
+					<a href="<?php echo esc_url( $crm->build_url( 'outreach-beeper' ) ); ?>">Beeper</a>
 					<span class="nav-separator">|</span>
-					<a href="<?php echo esc_url( $crm->build_url( 'outreach-settings' ) ); ?>" class="back-link">Settings</a>
+					<a href="<?php echo esc_url( $crm->build_url( 'outreach-settings' ) ); ?>">Settings</a>
 				</div>
 			</div>
 		</div>

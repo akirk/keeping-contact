@@ -72,10 +72,10 @@ usort( $linked_people, function( $a, $b ) {
 		<div class="header">
 			<div class="header-content">
 				<h1>Beeper Connections</h1>
-				<div class="header-subtitle">
-					<a href="<?php echo esc_url( $crm->build_url( 'outreach' ) ); ?>" class="back-link">← Back to Outreach</a>
+				<div class="back-nav">
+					<a href="<?php echo esc_url( $crm->build_url( 'outreach' ) ); ?>">← Back to Outreach</a>
 					<span class="nav-separator">|</span>
-					<a href="<?php echo esc_url( $crm->build_url( 'outreach-settings' ) ); ?>" class="back-link">Settings</a>
+					<a href="<?php echo esc_url( $crm->build_url( 'outreach-settings' ) ); ?>">Settings</a>
 				</div>
 			</div>
 		</div>

@@ -98,8 +98,8 @@ $frequency_labels = [
 		<div class="header">
 			<div class="header-content">
 				<h1>Outreach History</h1>
-				<div class="header-subtitle">
-					<a href="<?php echo esc_url( $crm->build_url( 'outreach' ) ); ?>" class="back-link">← Back to Outreach Dashboard</a>
+				<div class="back-nav">
+					<a href="<?php echo esc_url( $crm->build_url( 'outreach' ) ); ?>">← Back to Outreach Dashboard</a>
 				</div>
 			</div>
 		</div>

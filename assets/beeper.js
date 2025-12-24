@@ -176,6 +176,40 @@
 		document.getElementById('kcBeeperModal').style.display = 'none';
 	};
 
+	window.kcBeeperAutoSync = function(username, chatIds) {
+		if (!chatIds || chatIds.length === 0) return;
+
+		var syncPromises = chatIds.map(function(chatId) {
+			return fetch(config.ajaxUrl, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: 'action=kc_beeper_sync&username=' + encodeURIComponent(username) + '&chat_id=' + encodeURIComponent(chatId) + '&_wpnonce=' + config.nonce
+			});
+		});
+
+		Promise.all(syncPromises).then(function() {
+			return fetch(config.ajaxUrl, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: 'action=kc_render_sidebar&username=' + encodeURIComponent(username) + '&_wpnonce=' + config.nonce
+			});
+		}).then(function(r) {
+			return r.json();
+		}).then(function(data) {
+			if (data.success && data.data.html) {
+				var existing = document.querySelector('.kc-sidebar-section');
+				if (existing) {
+					var parser = new DOMParser();
+					var doc = parser.parseFromString(data.data.html, 'text/html');
+					var newSection = doc.querySelector('.kc-sidebar-section');
+					if (newSection) {
+						existing.replaceWith(newSection);
+					}
+				}
+			}
+		});
+	};
+
 	// Close modal when clicking outside
 	document.addEventListener('DOMContentLoaded', function() {
 		var modal = document.getElementById('kcBeeperModal');

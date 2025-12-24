@@ -7,9 +7,11 @@
 
 	var config = window.kcAnalysisConfig || {};
 	var allMessages = [];
-	var lastCursor = null;
+	var chatStates = {}; // Track cursor and hasMore per chat
 	var hasMoreMessages = false;
 	var isLoading = false;
+	var INITIAL_LIMIT = 5000;
+	var LOAD_MORE_BATCH = 1000;
 
 	function getDateLimit() {
 		var limit = new Date();
@@ -17,59 +19,313 @@
 		return limit;
 	}
 
-	async function fetchMessages(dateLimit, updateProgress) {
-		var cursor = lastCursor;
-		var hasMore = true;
-		var loadedCount = allMessages.length;
+	function initChatStates() {
+		if (!config.chatIds) return;
+		config.chatIds.forEach(function(chatId) {
+			if (!chatStates[chatId]) {
+				chatStates[chatId] = {
+					cursor: null,
+					hasMore: true,
+					hitDateLimit: false,
+					oldestFetched: null,
+					pendingMessages: []
+				};
+			}
+		});
+	}
 
-		while (hasMore) {
-			var body = 'action=kc_beeper_messages&chat_id=' + encodeURIComponent(config.chatId) + '&_wpnonce=' + config.nonce;
-			if (cursor) {
-				body += '&cursor=' + encodeURIComponent(cursor);
+	async function fetchMessagesFromChat(chatId, dateLimit) {
+		var state = chatStates[chatId];
+		if (!state.hasMore || state.hitDateLimit) return [];
+
+		var messages = [];
+		var body = 'action=kc_beeper_messages&chat_id=' + encodeURIComponent(chatId) + '&_wpnonce=' + config.nonce;
+		if (state.cursor) {
+			body += '&cursor=' + encodeURIComponent(state.cursor);
+		}
+
+		var response = await fetch(config.ajaxUrl, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: body
+		});
+
+		var data = await response.json();
+
+		if (!data.success || !data.data.messages) {
+			state.hasMore = false;
+			return [];
+		}
+
+		var oldestInBatch = null;
+		for (var i = 0; i < data.data.messages.length; i++) {
+			var msg = data.data.messages[i];
+			var msgDate = new Date(msg.date);
+
+			if (dateLimit && msgDate < dateLimit) {
+				state.hitDateLimit = true;
+				continue;
 			}
 
-			var response = await fetch(config.ajaxUrl, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: body
+			msg._chatId = chatId;
+			messages.push(msg);
+
+			if (oldestInBatch === null || msgDate < oldestInBatch) {
+				oldestInBatch = msgDate;
+			}
+		}
+
+		if (oldestInBatch) {
+			state.oldestFetched = oldestInBatch;
+		}
+
+		state.cursor = data.data.next_cursor;
+		state.hasMore = data.data.has_more && !state.hitDateLimit;
+
+		return messages;
+	}
+
+	async function fetchMessages(dateLimit, updateProgress) {
+		if (!config.chatIds || config.chatIds.length === 0) {
+			return allMessages;
+		}
+
+		var loadedCount = allMessages.length;
+		var youCount = 0;
+		var themCount = 0;
+
+		allMessages.forEach(function(msg) {
+			if (msg.is_sender) youCount++;
+			else themCount++;
+		});
+
+		var keepFetching = true;
+		var syncWindow = 14 * 24 * 60 * 60 * 1000; // 14 days
+		var noProgressCount = 0;
+		var maxNoProgress = 10; // Break if no progress after this many iterations
+
+		while (keepFetching && allMessages.length < INITIAL_LIMIT) {
+			var countAtStartOfIteration = allMessages.length;
+
+			// Find the frontier: most recent "oldest fetched" date across all chats
+			var frontier = null;
+			config.chatIds.forEach(function(chatId) {
+				var state = chatStates[chatId];
+				if (state.oldestFetched && (frontier === null || state.oldestFetched > frontier)) {
+					frontier = state.oldestFetched;
+				}
 			});
 
-			var data = await response.json();
+			// Fetch from chats that are at or near the frontier
+			var fetchPromises = [];
+			config.chatIds.forEach(function(chatId) {
+				var state = chatStates[chatId];
+				if (!state.hasMore || state.hitDateLimit) return;
 
-			if (!data.success || !data.data.messages) {
-				break;
+				// Don't fetch more if there are pending messages waiting
+				if (state.pendingMessages.length > 0) return;
+
+				// Eligible if: hasn't fetched yet, or is within sync window of frontier
+				var eligible = !state.oldestFetched ||
+					!frontier ||
+					(frontier.getTime() - state.oldestFetched.getTime()) < syncWindow;
+
+				if (eligible) {
+					fetchPromises.push(fetchMessagesFromChat(chatId, dateLimit));
+				}
+			});
+
+			// Fetch if we have eligible chats, otherwise yield to event loop
+			if (fetchPromises.length > 0) {
+				var results = await Promise.all(fetchPromises);
+
+				// Add fetched messages to each chat's pending buffer
+				results.forEach(function(msgs) {
+					msgs.forEach(function(msg) {
+						var state = chatStates[msg._chatId];
+						if (state) {
+							state.pendingMessages.push(msg);
+						}
+					});
+				});
+			} else {
+				// Yield to event loop to prevent blocking the browser
+				await new Promise(function(resolve) { setTimeout(resolve, 0); });
 			}
 
-			var messages = data.data.messages;
-			var reachedLimit = false;
+			// Check if any chat has pending messages
+			var anyPending = config.chatIds.some(function(chatId) {
+				return chatStates[chatId].pendingMessages.length > 0;
+			});
 
-			for (var i = 0; i < messages.length; i++) {
-				var msg = messages[i];
-				var msgDate = new Date(msg.date);
+			// If no fetches and no pending, check for paused chats
+			if (fetchPromises.length === 0 && !anyPending) {
+				var anyPaused = config.chatIds.some(function(chatId) {
+					var state = chatStates[chatId];
+					return state.hasMore && !state.hitDateLimit;
+				});
 
-				if (dateLimit && msgDate < dateLimit) {
-					reachedLimit = true;
-					continue;
+				if (anyPaused) {
+					// Force fetch from paused chats
+					config.chatIds.forEach(function(chatId) {
+						var state = chatStates[chatId];
+						if (state.hasMore && !state.hitDateLimit) {
+							fetchPromises.push(fetchMessagesFromChat(chatId, dateLimit));
+						}
+					});
+
+					if (fetchPromises.length > 0) {
+						var forcedResults = await Promise.all(fetchPromises);
+						forcedResults.forEach(function(msgs) {
+							msgs.forEach(function(msg) {
+								var state = chatStates[msg._chatId];
+								if (state) {
+									state.pendingMessages.push(msg);
+								}
+							});
+						});
+					}
 				}
+			}
 
-				allMessages.push(msg);
-				loadedCount++;
+			// Re-check pending after potential forced fetch
+			anyPending = config.chatIds.some(function(chatId) {
+				return chatStates[chatId].pendingMessages.length > 0;
+			});
+
+			if (!anyPending) {
+				// Nothing to process
+				var anyHasMore = config.chatIds.some(function(chatId) {
+					var state = chatStates[chatId];
+					return state.hasMore && !state.hitDateLimit;
+				});
+				if (!anyHasMore) {
+					keepFetching = false;
+					break;
+				}
+			}
+
+			// Find the current frontier (oldest message already added, or now if empty)
+			var currentOldest = allMessages.length > 0
+				? new Date(allMessages[allMessages.length - 1].date)
+				: new Date();
+
+			// Process pending messages: only add those within sync window
+			var addedAny = false;
+			config.chatIds.forEach(function(chatId) {
+				var state = chatStates[chatId];
+				var stillPending = [];
+
+				state.pendingMessages.forEach(function(msg) {
+					var msgDate = new Date(msg.date);
+					var withinWindow = (currentOldest.getTime() - msgDate.getTime()) < syncWindow;
+
+					if (withinWindow && allMessages.length < INITIAL_LIMIT) {
+						allMessages.push(msg);
+						loadedCount++;
+						if (msg.is_sender) youCount++;
+						else themCount++;
+						addedAny = true;
+					} else {
+						stillPending.push(msg);
+					}
+				});
+
+				state.pendingMessages = stillPending;
+			});
+
+			// Sort by date after each batch
+			allMessages.sort(function(a, b) {
+				return new Date(b.date) - new Date(a.date);
+			});
+
+			// Check if any chat still has more messages or pending messages
+			var anyHasMore = config.chatIds.some(function(chatId) {
+				var state = chatStates[chatId];
+				return (state.hasMore && !state.hitDateLimit) || state.pendingMessages.length > 0;
+			});
+
+			if (!anyHasMore) {
+				keepFetching = false;
+			}
+
+			// Force advance if we can't make progress any other way:
+			// - Nothing was added this round
+			// - All chats are either exhausted OR blocked by pending messages
+			var allChatsBlocked = config.chatIds.every(function(chatId) {
+				var state = chatStates[chatId];
+				var exhausted = !state.hasMore || state.hitDateLimit;
+				var blockedByPending = state.pendingMessages.length > 0;
+				return exhausted || blockedByPending;
+			});
+
+			var hasPendingMessages = config.chatIds.some(function(chatId) {
+				return chatStates[chatId].pendingMessages.length > 0;
+			});
+
+			if (!addedAny && allChatsBlocked && hasPendingMessages) {
+				// Force add the most recent pending message to advance the frontier
+				var newestPending = null;
+				var newestPendingChat = null;
+				config.chatIds.forEach(function(chatId) {
+					var state = chatStates[chatId];
+					state.pendingMessages.forEach(function(msg) {
+						var msgDate = new Date(msg.date);
+						if (!newestPending || msgDate > newestPending.date) {
+							newestPending = { msg: msg, date: msgDate };
+							newestPendingChat = chatId;
+						}
+					});
+				});
+
+				if (newestPending && allMessages.length < INITIAL_LIMIT) {
+					allMessages.push(newestPending.msg);
+					loadedCount++;
+					if (newestPending.msg.is_sender) youCount++;
+					else themCount++;
+
+					// Remove from pending
+					var state = chatStates[newestPendingChat];
+					state.pendingMessages = state.pendingMessages.filter(function(m) {
+						return m !== newestPending.msg;
+					});
+
+					allMessages.sort(function(a, b) {
+						return new Date(b.date) - new Date(a.date);
+					});
+				}
+			}
+
+			// Track progress to prevent infinite loops
+			if (allMessages.length === countAtStartOfIteration && fetchPromises.length === 0) {
+				noProgressCount++;
+				if (noProgressCount >= maxNoProgress) {
+					console.warn('Breaking out of fetch loop - no progress after', maxNoProgress, 'iterations');
+					keepFetching = false;
+				}
+			} else {
+				noProgressCount = 0;
 			}
 
 			if (updateProgress) {
-				updateProgress(loadedCount);
-			}
-
-			hasMore = !reachedLimit && data.data.has_more;
-			cursor = data.data.next_cursor;
-			lastCursor = cursor;
-			hasMoreMessages = data.data.has_more && !reachedLimit;
-
-			if (!cursor) {
-				hasMoreMessages = false;
-				break;
+				var oldest = allMessages.length > 0 ? new Date(allMessages[allMessages.length - 1].date) : null;
+				var newest = allMessages.length > 0 ? new Date(allMessages[0].date) : null;
+				updateProgress({
+					count: loadedCount,
+					oldestDate: oldest,
+					newestDate: newest,
+					youCount: youCount,
+					themCount: themCount,
+					hitLimit: allMessages.length >= INITIAL_LIMIT
+				});
 			}
 		}
+
+		// Update hasMoreMessages for "load more" button
+		hasMoreMessages = config.chatIds.some(function(chatId) {
+			var state = chatStates[chatId];
+			return (state.hasMore && !state.hitDateLimit) || state.pendingMessages.length > 0;
+		});
 
 		return allMessages;
 	}
@@ -91,6 +347,8 @@
 		var lastTime = null;
 		var lastSender = null;
 		var gapThreshold = 4 * 60 * 60 * 1000; // 4 hours
+		var dayOfWeek = [0, 0, 0, 0, 0, 0, 0]; // Sun-Sat
+		var hourOfDay = new Array(24).fill(0);
 
 		messages.sort(function(a, b) {
 			return new Date(a.date) - new Date(b.date);
@@ -98,8 +356,12 @@
 
 		for (var i = 0; i < messages.length; i++) {
 			var msg = messages[i];
-			var msgTime = new Date(msg.date).getTime();
+			var msgDate = new Date(msg.date);
+			var msgTime = msgDate.getTime();
 			var isSender = msg.is_sender;
+
+			dayOfWeek[msgDate.getDay()]++;
+			hourOfDay[msgDate.getHours()]++;
 
 			if (isSender) {
 				youCount++;
@@ -175,6 +437,8 @@
 			avgGap: avgGap,
 			sessions: sessions.length,
 			avgSessionLength: avgSessionLength,
+			dayOfWeek: dayOfWeek,
+			hourOfDay: hourOfDay,
 			messages: messages
 		};
 	}
@@ -195,6 +459,22 @@
 			return minutes + ' min';
 		}
 		return '< 1 min';
+	}
+
+	function renderTimeframe(messages) {
+		if (messages.length === 0) return;
+
+		var sorted = messages.slice().sort(function(a, b) {
+			return new Date(a.date) - new Date(b.date);
+		});
+		var oldest = new Date(sorted[0].date);
+		var newest = new Date(sorted[sorted.length - 1].date);
+
+		var opts = { month: 'short', day: 'numeric', year: 'numeric' };
+		var text = oldest.toLocaleDateString('en-US', opts) + ' — ' + newest.toLocaleDateString('en-US', opts);
+		text += ' · ' + messages.length.toLocaleString() + ' messages';
+
+		document.getElementById('analysisTimeframe').textContent = text;
 	}
 
 	function renderStats(stats) {
@@ -278,6 +558,7 @@
 			if (total > maxMessages) maxMessages = total;
 		});
 
+		var opts = { month: 'short', day: 'numeric' };
 		weekKeys.forEach(function(key) {
 			var week = weeks[key];
 			var total = week.you + week.them;
@@ -285,9 +566,14 @@
 			var youHeight = total > 0 ? (week.you / total) * height : 0;
 			var themHeight = total > 0 ? (week.them / total) * height : 0;
 
+			var weekEnd = new Date(week.date);
+			weekEnd.setDate(weekEnd.getDate() + 6);
+			var dateRange = week.date.toLocaleDateString('en-US', opts) + ' – ' + weekEnd.toLocaleDateString('en-US', opts);
+			var tooltip = dateRange + '\n' + total + ' messages\nYou: ' + week.you + ' · Them: ' + week.them;
+
 			var bar = document.createElement('div');
 			bar.className = 'timeline-bar';
-			bar.title = week.date.toLocaleDateString() + ': ' + total + ' messages';
+			bar.setAttribute('data-tooltip', tooltip);
 
 			var youBar = document.createElement('div');
 			youBar.className = 'timeline-bar-you';
@@ -303,6 +589,40 @@
 		});
 	}
 
+	function renderWeekFrequency(stats) {
+		var container = document.getElementById('weekFrequencyContainer');
+		if (!container) return;
+
+		while (container.firstChild) {
+			container.removeChild(container.firstChild);
+		}
+
+		var days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+		var max = Math.max.apply(null, stats.dayOfWeek);
+
+		stats.dayOfWeek.forEach(function(count, idx) {
+			var bar = document.createElement('div');
+			bar.className = 'frequency-bar';
+			bar.setAttribute('data-tooltip', count.toLocaleString() + ' messages');
+
+			var fill = document.createElement('div');
+			fill.className = 'frequency-bar-fill';
+			fill.style.height = max > 0 ? Math.max(4, (count / max) * 50) + 'px' : '4px';
+
+			var label = document.createElement('div');
+			label.className = 'frequency-bar-label';
+			label.textContent = days[idx];
+
+			bar.appendChild(fill);
+			bar.appendChild(label);
+			container.appendChild(bar);
+		});
+
+		// Find busiest day
+		var busiestIdx = stats.dayOfWeek.indexOf(max);
+		document.getElementById('busiestDay').textContent = days[busiestIdx];
+	}
+
 	function showLoadingError(message) {
 		var loading = document.getElementById('analysisLoading');
 		while (loading.firstChild) {
@@ -314,25 +634,21 @@
 	}
 
 	function updateLoadMoreButton() {
-		var container = document.getElementById('loadMoreContainer');
-		var hint = document.getElementById('loadMoreHint');
-
+		var btn = document.getElementById('loadMoreBtn');
 		if (hasMoreMessages) {
-			container.style.display = 'flex';
-			if (allMessages.length > 0) {
-				var oldest = new Date(allMessages[allMessages.length - 1].date);
-				hint.textContent = 'Currently showing back to ' + oldest.toLocaleDateString();
-			}
+			btn.classList.remove('hidden');
 		} else {
-			container.style.display = 'none';
+			btn.classList.add('hidden');
 		}
 	}
 
 	function refreshAnalysis() {
 		var stats = analyzeMessages(allMessages);
 		if (stats) {
+			renderTimeframe(stats.messages);
 			renderStats(stats);
 			renderTimeline(stats.messages);
+			renderWeekFrequency(stats);
 		}
 		updateLoadMoreButton();
 	}
@@ -342,31 +658,53 @@
 
 		isLoading = true;
 		var btn = document.getElementById('loadMoreBtn');
-		btn.disabled = true;
-		btn.textContent = 'Loading...';
+		btn.textContent = '· Loading...';
+		btn.classList.add('loading');
+
+		// Increase limit to load more messages
+		INITIAL_LIMIT += LOAD_MORE_BATCH;
 
 		try {
-			await fetchMessages(null, function(count) {
-				btn.textContent = 'Loading... (' + count + ' messages)';
-			});
-
+			await fetchMessages(null, null);
 			refreshAnalysis();
 		} catch (error) {
 			console.error('Error loading more:', error);
 		}
 
 		isLoading = false;
-		btn.disabled = false;
-		btn.textContent = 'Load older history';
+		btn.classList.remove('loading');
+		btn.textContent = '· Load more';
 	}
 
 	async function init() {
-		if (!config.chatId) return;
+		if (!config.chatIds || config.chatIds.length === 0) return;
+
+		initChatStates();
 
 		try {
 			var dateLimit = getDateLimit();
-			var messages = await fetchMessages(dateLimit, function(count) {
-				document.getElementById('loadingProgress').textContent = count + ' messages loaded';
+			var messages = await fetchMessages(dateLimit, function(progress) {
+				// Message count with date range
+				var opts = { month: 'short', day: 'numeric' };
+				var text = progress.count.toLocaleString() + ' messages';
+				if (progress.oldestDate && progress.newestDate) {
+					text += ' · ' + progress.oldestDate.toLocaleDateString('en-US', opts) +
+						' — ' + progress.newestDate.toLocaleDateString('en-US', opts);
+				}
+				document.getElementById('loadingProgress').textContent = text;
+
+				// Limit indicator
+				document.getElementById('loadingRange').textContent = progress.hitLimit ? 'Limit reached' : '';
+
+				// Balance bar
+				var total = progress.youCount + progress.themCount;
+				var youPct = total > 0 ? Math.round((progress.youCount / total) * 100) : 50;
+				var themPct = 100 - youPct;
+
+				document.getElementById('loadingBarYou').style.width = youPct + '%';
+				document.getElementById('loadingBarThem').style.width = themPct + '%';
+				document.getElementById('loadingLabelYou').textContent = 'You: ' + youPct + '%';
+				document.getElementById('loadingLabelThem').textContent = 'Them: ' + themPct + '%';
 			});
 
 			if (messages.length === 0) {
@@ -377,8 +715,10 @@
 			var stats = analyzeMessages(messages);
 
 			if (stats) {
+				renderTimeframe(stats.messages);
 				renderStats(stats);
 				renderTimeline(stats.messages);
+				renderWeekFrequency(stats);
 
 				document.getElementById('analysisLoading').style.display = 'none';
 				document.getElementById('analysisContent').style.display = 'block';

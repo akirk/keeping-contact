@@ -135,8 +135,8 @@ $ollama_model = PersonalCrm::get_ollama_model();
 		<div class="header">
 			<div class="header-content">
 				<h1>Conversation with <?php echo esc_html( $person->get_display_name_with_nickname() ); ?></h1>
-				<div class="header-subtitle">
-					<a href="<?php echo esc_url( $person->get_profile_url() ); ?>" class="back-link">← Back to <?php echo esc_html( $person->get_display_name_with_nickname() ); ?></a>
+				<div class="back-nav">
+					<a href="<?php echo esc_url( $person->get_profile_url() ); ?>">← Back to <?php echo esc_html( $person->get_display_name_with_nickname() ); ?></a>
 				</div>
 			</div>
 			<?php if ( $person->email ) : ?>

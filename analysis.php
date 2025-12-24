@@ -39,7 +39,6 @@ if ( ! is_array( $chat_ids ) ) {
 	$chat_ids = [];
 }
 
-$active_chat = ! empty( $chat_ids ) ? $chat_ids[0] : null;
 $beeper_configured = $beeper->is_configured();
 
 ?>
@@ -66,9 +65,12 @@ $beeper_configured = $beeper->is_configured();
 	<div class="container">
 		<div class="header">
 			<div class="header-content">
-				<h1>Relationship Analysis</h1>
-				<div class="header-subtitle">
-					<a href="<?php echo esc_url( $crm->build_url( 'conversations', array( 'person' => $username ) ) ); ?>" class="back-link">← Back to conversation</a>
+				<h1>Relationship Analysis with <?php echo esc_html( $person->name ); ?></h1>
+				<div class="back-nav">
+					<a href="<?php echo esc_url( $crm->build_url( 'conversations.php', array( 'person' => $username ) ) ); ?>">← Back to conversation</a>
+					<span class="nav-separator">|</span>
+					<a href="<?php echo esc_url( $crm->build_url( 'person.php' , array( 'person' => $username ) ) ); ?>">← Back to <?php echo esc_html( $person->name ); ?></a>
+
 				</div>
 			</div>
 			<?php if ( $person->email ) : ?>
@@ -82,7 +84,7 @@ $beeper_configured = $beeper->is_configured();
 			<div class="beeper-error-notice">
 				<strong>Beeper:</strong> API token not configured. Add it in Settings.
 			</div>
-		<?php elseif ( ! $active_chat ) : ?>
+		<?php elseif ( empty( $chat_ids ) ) : ?>
 			<div class="beeper-error-notice">
 				<strong>Beeper:</strong> No chats linked to this person.
 			</div>
@@ -91,15 +93,25 @@ $beeper_configured = $beeper->is_configured();
 				<div class="analysis-loading" id="analysisLoading">
 					<div class="analysis-loading-spinner"></div>
 					<p>Loading conversation history...</p>
-					<p class="analysis-loading-progress" id="loadingProgress">0 messages loaded</p>
-				</div>
-
-				<div class="analysis-load-more" id="loadMoreContainer" style="display: none;">
-					<button type="button" class="btn btn-secondary" id="loadMoreBtn">Load older history</button>
-					<span class="analysis-load-more-hint" id="loadMoreHint"></span>
+					<p class="analysis-loading-progress" id="loadingProgress">0 messages</p>
+					<p class="analysis-loading-range" id="loadingRange"></p>
+					<div class="analysis-loading-bar-container">
+						<div class="analysis-loading-bar">
+							<div class="analysis-loading-bar-you" id="loadingBarYou"></div>
+							<div class="analysis-loading-bar-them" id="loadingBarThem"></div>
+						</div>
+						<div class="analysis-loading-bar-labels">
+							<span id="loadingLabelYou">You: 0%</span>
+							<span id="loadingLabelThem">Them: 0%</span>
+						</div>
+					</div>
 				</div>
 
 				<div class="analysis-content" id="analysisContent" style="display: none;">
+					<p class="analysis-timeframe">
+						<span id="analysisTimeframe"></span>
+						<a href="#" id="loadMoreBtn" class="load-more-link">· Load more</a>
+					</p>
 					<div class="analysis-stats">
 						<div class="stat-card">
 							<div class="stat-card-title">Total Messages</div>
@@ -123,23 +135,30 @@ $beeper_configured = $beeper->is_configured();
 						</div>
 					</div>
 
-					<div class="analysis-section">
-						<h3>Message Balance</h3>
-						<div class="balance-bar-container">
-							<div class="balance-bar" id="balanceBar">
-								<div class="balance-bar-you" id="balanceBarYou"></div>
-								<div class="balance-bar-them" id="balanceBarThem"></div>
+					<div class="analysis-row">
+						<div class="analysis-section">
+							<h3>Message Balance</h3>
+							<div class="balance-bar-container">
+								<div class="balance-bar" id="balanceBar">
+									<div class="balance-bar-you" id="balanceBarYou"></div>
+									<div class="balance-bar-them" id="balanceBarThem"></div>
+								</div>
+								<div class="balance-labels">
+									<span id="balanceLabelYou">You: 0%</span>
+									<span id="balanceLabelThem">Them: 0%</span>
+								</div>
 							</div>
-							<div class="balance-labels">
-								<span id="balanceLabelYou">You: 0%</span>
-								<span id="balanceLabelThem">Them: 0%</span>
-							</div>
+						</div>
+
+						<div class="analysis-section">
+							<h3>Weekly Pattern</h3>
+							<p class="analysis-hint">Busiest day: <strong id="busiestDay">-</strong></p>
+							<div class="week-frequency-container" id="weekFrequencyContainer"></div>
 						</div>
 					</div>
 
 					<div class="analysis-section">
 						<h3>Conversation Timeline</h3>
-						<p class="analysis-hint">Activity over the past year</p>
 						<div class="timeline-container" id="timelineContainer"></div>
 						<div class="timeline-legend">
 							<span class="timeline-legend-item"><span class="timeline-legend-color you"></span> You</span>
@@ -173,7 +192,7 @@ $beeper_configured = $beeper->is_configured();
 	window.kcAnalysisConfig = {
 		ajaxUrl: <?php echo json_encode( admin_url( 'admin-ajax.php' ) ); ?>,
 		nonce: <?php echo json_encode( wp_create_nonce( 'kc_beeper' ) ); ?>,
-		chatId: <?php echo json_encode( $active_chat ); ?>,
+		chatIds: <?php echo json_encode( array_values( $chat_ids ) ); ?>,
 		personName: <?php echo json_encode( $person->name ); ?>
 	};
 	</script>

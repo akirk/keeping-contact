@@ -47,10 +47,10 @@ $beeper_token = get_option( 'keeping_contact_beeper_token', '' );
 		<div class="header">
 			<div class="header-content">
 				<h1>Outreach Settings</h1>
-				<div class="header-subtitle">
-					<a href="<?php echo esc_url( $crm->build_url( 'outreach' ) ); ?>" class="back-link">← Back to Outreach</a>
+				<div class="back-nav">
+					<a href="<?php echo esc_url( $crm->build_url( 'outreach' ) ); ?>">← Back to Outreach</a>
 					<span class="nav-separator">|</span>
-					<a href="<?php echo esc_url( $crm->build_url( 'outreach-beeper' ) ); ?>" class="back-link">Beeper Connections</a>
+					<a href="<?php echo esc_url( $crm->build_url( 'outreach-beeper' ) ); ?>">Beeper Connections</a>
 				</div>
 			</div>
 		</div>

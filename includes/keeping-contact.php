@@ -24,8 +24,7 @@ class KeepingContact {
 		$this->enqueue_styles();
 
 		add_action( 'personal_crm_person_sidebar', [ $this, 'render_person_sidebar' ], 20, 2 );
-		add_action( 'personal_crm_person_sidebar', [ $this, 'render_beeper_sidebar' ], 25, 2 );
-		add_action( 'personal_crm_person_quick_links', [ $this, 'render_quick_links' ], 10, 3 );
+		add_filter( 'personal_crm_person_quick_links', [ $this, 'render_quick_links' ], 10, 4 );
 		add_action( 'personal_crm_admin_person_form_fields', [ $this, 'render_admin_fields' ], 10, 2 );
 		add_action( 'personal_crm_admin_person_form_fields', [ $this, 'render_beeper_admin_fields' ], 15, 2 );
 		add_action( 'personal_crm_admin_person_save', [ $this, 'save_person_data' ], 10, 3 );
@@ -55,6 +54,8 @@ class KeepingContact {
 		add_action( 'wp_ajax_kc_beeper_save_token', [ __CLASS__, 'static_ajax_beeper_save_token' ] );
 		add_action( 'wp_ajax_kc_beeper_send', [ __CLASS__, 'static_ajax_beeper_send' ] );
 		add_action( 'wp_ajax_kc_beeper_messages', [ __CLASS__, 'static_ajax_beeper_messages' ] );
+		add_action( 'wp_ajax_kc_render_sidebar', [ __CLASS__, 'static_ajax_render_sidebar' ] );
+		add_action( 'wp_ajax_kc_set_schedule', [ __CLASS__, 'static_ajax_set_schedule' ] );
 	}
 
 	private static function get_beeper() {
@@ -325,6 +326,53 @@ class KeepingContact {
 		wp_send_json_success( $result );
 	}
 
+	public static function static_ajax_render_sidebar() {
+		check_ajax_referer( 'kc_beeper', '_wpnonce' );
+
+		$username = sanitize_text_field( $_POST['username'] ?? '' );
+
+		if ( empty( $username ) ) {
+			wp_send_json_error( 'Username required' );
+		}
+
+		$instance = self::get_instance();
+		if ( ! $instance ) {
+			wp_send_json_error( 'Plugin not initialized' );
+		}
+
+		$person = $instance->crm->storage->get_person( $username );
+		if ( ! $person ) {
+			wp_send_json_error( 'Person not found' );
+		}
+
+		ob_start();
+		$instance->render_person_sidebar( $person, false );
+		$html = ob_get_clean();
+
+		wp_send_json_success( [ 'html' => $html ] );
+	}
+
+	public static function static_ajax_set_schedule() {
+		check_ajax_referer( 'kc_beeper', '_wpnonce' );
+
+		$username = sanitize_text_field( $_POST['username'] ?? '' );
+		$frequency = intval( $_POST['frequency'] ?? 0 );
+
+		if ( empty( $username ) || $frequency <= 0 ) {
+			wp_send_json_error( 'Username and frequency required' );
+		}
+
+		$storage = self::get_storage();
+		$storage->save_schedule( $username, [
+			'frequency_days' => $frequency,
+			'priority'       => 'normal',
+			'paused'         => 0,
+			'notes'          => '',
+		] );
+
+		wp_send_json_success( [ 'saved' => true ] );
+	}
+
 	public static function get_instance() {
 		return self::$instance;
 	}
@@ -364,51 +412,59 @@ class KeepingContact {
 	public function render_person_sidebar( $person, $is_team_member ) {
 		$stats = $this->storage->get_contact_stats( $person->username );
 
-		if ( $stats['status'] === 'no_schedule' ) {
-			return;
-		}
-
-		$status_colors = [
-			'overdue'         => '#dc3545',
-			'due_soon'        => '#fd7e14',
-			'on_track'        => '#28a745',
-			'never_contacted' => '#dc3545',
-			'paused'          => '#6c757d',
-		];
-
 		$status_labels = [
 			'overdue'         => 'Overdue',
 			'due_soon'        => 'Due Soon',
 			'on_track'        => 'On Track',
 			'never_contacted' => 'Never Contacted',
 			'paused'          => 'Paused',
+			'no_schedule'     => 'No Schedule',
 		];
 
-		$frequency_label = $this->format_frequency( $stats['schedule']['frequency_days'] );
+		// Get Beeper chat IDs
+		$chat_ids = [];
+		if ( $this->beeper->is_configured() ) {
+			$chat_ids = get_option( 'kc_beeper_chats_' . $person->username, [] );
+			if ( ! is_array( $chat_ids ) ) {
+				$chat_ids = [];
+			}
+			// Migrate from old single-value option
+			$old_chat_id = get_option( 'kc_beeper_chat_' . $person->username, '' );
+			if ( ! empty( $old_chat_id ) && ! in_array( $old_chat_id, $chat_ids ) ) {
+				$chat_ids[] = $old_chat_id;
+				update_option( 'kc_beeper_chats_' . $person->username, $chat_ids );
+				delete_option( 'kc_beeper_chat_' . $person->username );
+			}
+		}
+
 		$status_class = str_replace( '_', '-', $stats['status'] );
 		?>
 		<div class="kc-sidebar-section">
 			<div class="kc-sidebar-header">
-				<h3>Keeping Contact</h3>
+				<h3><a href="<?php echo esc_url( $this->crm->build_url( 'outreach' ) ); ?>">Keeping Contact</a></h3>
 				<span class="kc-sidebar-badge status-badge <?php echo esc_attr( $status_class ); ?>">
 					<?php echo esc_html( $status_labels[ $stats['status'] ] ); ?>
 				</span>
 			</div>
 
-			<div class="kc-sidebar-content">
-				<div class="kc-sidebar-row"><strong>Frequency:</strong> <?php echo esc_html( $frequency_label ); ?></div>
+				<div class="kc-sidebar-content">
+				<?php if ( $stats['status'] !== 'no_schedule' ) : ?>
+				<div class="kc-sidebar-row"><strong>Frequency:</strong> <?php echo esc_html( $this->format_frequency( $stats['schedule']['frequency_days'] ) ); ?></div>
+				<?php endif; ?>
 
-				<?php if ( $stats['last_contact'] ) : ?>
+				<?php if ( $stats['last_contact'] ) :
+					$days_ago = floor( ( time() - strtotime( $stats['last_contact']['contact_date'] ) ) / 86400 );
+				?>
 					<div class="kc-sidebar-row">
 						<strong>Last contact:</strong>
 						<?php echo esc_html( date( 'M j, Y', strtotime( $stats['last_contact']['contact_date'] ) ) ); ?>
-						<span class="context-muted">(<?php echo esc_html( $stats['days_since_contact'] ); ?> days ago)</span>
+						<span class="context-muted">(<?php echo esc_html( $days_ago ); ?> days ago)</span>
 					</div>
 				<?php else : ?>
 					<div class="kc-sidebar-row"><strong>Last contact:</strong> <em>Never</em></div>
 				<?php endif; ?>
 
-				<?php if ( $stats['status'] !== 'paused' && $stats['days_until_due'] !== null ) : ?>
+				<?php if ( $stats['status'] !== 'no_schedule' && $stats['status'] !== 'paused' && $stats['days_until_due'] !== null ) : ?>
 					<div class="kc-sidebar-row">
 						<strong>Next due:</strong>
 						<?php if ( $stats['days_until_due'] < 0 ) : ?>
@@ -421,7 +477,7 @@ class KeepingContact {
 					</div>
 				<?php endif; ?>
 
-				<?php if ( $stats['schedule']['priority'] !== 'normal' ) : ?>
+				<?php if ( $stats['status'] !== 'no_schedule' && $stats['schedule']['priority'] !== 'normal' ) : ?>
 					<div class="kc-sidebar-row">
 						<strong>Priority:</strong>
 						<?php echo esc_html( ucfirst( $stats['schedule']['priority'] ) ); ?>
@@ -430,7 +486,67 @@ class KeepingContact {
 			</div>
 
 			<?php $this->render_contact_log( $person->username ); ?>
+
+			<?php if ( $this->beeper->is_configured() ) : ?>
+			<div class="kc-beeper-subsection">
+				<?php foreach ( $chat_ids as $chat_id ) :
+					$chat = $this->beeper->get_chat( $chat_id );
+					$network = is_wp_error( $chat ) ? 'Unknown' : ( $chat['network'] ?? 'Connected' );
+					$title = $chat_id;
+					if ( ! is_wp_error( $chat ) ) {
+						$participants = $chat['participants']['items'] ?? [];
+						foreach ( $participants as $p ) {
+							if ( empty( $p['isSelf'] ) && ! empty( $p['fullName'] ) ) {
+								$title = $p['fullName'];
+								break;
+							}
+						}
+						if ( $title === $chat_id ) {
+							$title = $chat['title'] ?? $chat['name'] ?? $network;
+						}
+					}
+				?>
+					<div class="kc-beeper-chat">
+						<a href="<?php echo esc_url( $this->crm->build_url( 'conversations', [ 'person' => $person->username ] ) ); ?>" class="kc-beeper-chat-info">
+							💬 <?php echo esc_html( $title ); ?>
+							<span class="kc-beeper-chat-network">(<?php echo esc_html( $network ); ?>)</span>
+						</a>
+						<button type="button" class="btn-sm btn-danger" onclick="kcBeeperUnlink('<?php echo esc_js( $person->username ); ?>', '<?php echo esc_js( $chat_id ); ?>')" title="Disconnect chat">×</button>
+					</div>
+				<?php endforeach; ?>
+
+				<button type="button" class="kc-beeper-add" onclick="kcBeeperSearch('<?php echo esc_js( $person->username ); ?>', '<?php echo esc_js( $person->name ); ?>')">
+					<?php echo empty( $chat_ids ) ? '+ Connect Beeper chat' : '+ Add another chat'; ?>
+				</button>
+
+				<?php if ( ! empty( $chat_ids ) ) : ?>
+				<a href="<?php echo esc_url( $this->crm->build_url( 'analysis', [ 'person' => $person->username ] ) ); ?>" class="kc-beeper-analysis-link">
+					📊 Relationship Analysis
+				</a>
+				<?php endif; ?>
+			</div>
+			<?php endif; ?>
 		</div>
+		<?php
+		$this->render_beeper_modal();
+		$this->render_sidebar_scripts( $person->username, $chat_ids );
+	}
+
+	/**
+	 * Render sidebar scripts for auto-sync
+	 */
+	private function render_sidebar_scripts( $username, $chat_ids ) {
+		if ( empty( $chat_ids ) ) {
+			return;
+		}
+		?>
+		<script>
+		document.addEventListener('DOMContentLoaded', function() {
+			if (typeof kcBeeperAutoSync === 'function') {
+				kcBeeperAutoSync('<?php echo esc_js( $username ); ?>', <?php echo wp_json_encode( $chat_ids ); ?>);
+			}
+		});
+		</script>
 		<?php
 	}
 
@@ -470,16 +586,16 @@ class KeepingContact {
 	}
 
 	/**
-	 * Render quick link to draft message
+	 * Add quick link to send message
 	 */
-	public function render_quick_links( $person, $is_team_member, $group_data ) {
-		?>
-		<a href="<?php echo esc_url( $this->crm->build_url( 'conversations', array( 'person' => $person->username ) ) ); ?>"
-		   class="quick-link"
-		   title="Send a message">
-			✏️ Send message
-		</a>
-		<?php
+	public function render_quick_links( $quick_links, $person, $is_team_member, $group_data ) {
+		$quick_links['send-message'] = array(
+			'url'   => $this->crm->build_url( 'conversations', array( 'person' => $person->username ) ),
+			'label' => 'Send message',
+			'icon'  => '✏️',
+			'title' => 'Send a message',
+		);
+		return $quick_links;
 	}
 
 	/**
@@ -645,25 +761,68 @@ class KeepingContact {
 		<?php endif; ?>
 
 		<?php if ( ! empty( $beeper_without_schedule ) ) : ?>
-		<div class="sidebar-section">
+		<div class="sidebar-section" id="kc-needs-schedule">
 			<h3>
 				<a href="<?php echo esc_url( $this->crm->build_url( 'outreach' ) ); ?>">
 					Needs Schedule
 				</a>
 			</h3>
-			<ul class="sidebar-list">
+			<ul class="sidebar-list kc-schedule-list">
 				<?php foreach ( array_slice( $beeper_without_schedule, 0, 5 ) as $username ) :
 					$person = $this->crm->storage->get_person( $username );
 					if ( ! $person ) continue;
 				?>
-					<li>
-						<a href="<?php echo esc_url( $this->crm->build_url( 'outreach', [ 'person' => $username ] ) ); ?>">
+					<li data-username="<?php echo esc_attr( $username ); ?>">
+						<a href="<?php echo esc_url( $person->get_profile_url() ); ?>">
 							<?php echo esc_html( $person->get_display_name_with_nickname() ); ?>
 						</a>
+						<span class="kc-quick-schedule">
+							<button type="button" data-freq="7" title="Weekly">1w</button>
+							<button type="button" data-freq="14" title="Every 2 weeks">2w</button>
+							<button type="button" data-freq="30" title="Monthly">1m</button>
+							<button type="button" data-freq="90" title="Quarterly">3m</button>
+						</span>
 					</li>
 				<?php endforeach; ?>
 			</ul>
 		</div>
+		<script>
+		(function() {
+			var ajaxUrl = '<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>';
+			var nonce = '<?php echo wp_create_nonce( 'kc_beeper' ); ?>';
+
+			document.getElementById('kc-needs-schedule').addEventListener('click', function(e) {
+				var btn = e.target.closest('button[data-freq]');
+				if (!btn) return;
+
+				var li = btn.closest('li');
+				var username = li.dataset.username;
+				var freq = btn.dataset.freq;
+
+				btn.disabled = true;
+				btn.textContent = '...';
+
+				fetch(ajaxUrl, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+					body: 'action=kc_set_schedule&username=' + encodeURIComponent(username) + '&frequency=' + freq + '&_wpnonce=' + nonce
+				})
+				.then(function(r) { return r.json(); })
+				.then(function(data) {
+					if (data.success) {
+						li.remove();
+						var list = document.querySelector('#kc-needs-schedule .sidebar-list');
+						if (!list || !list.children.length) {
+							document.getElementById('kc-needs-schedule').remove();
+						}
+					} else {
+						btn.disabled = false;
+						btn.textContent = btn.dataset.freq === '7' ? '1w' : btn.dataset.freq === '14' ? '2w' : btn.dataset.freq === '30' ? '1m' : '3m';
+					}
+				});
+			});
+		})();
+		</script>
 		<?php endif; ?>
 		<?php
 	}
@@ -690,7 +849,7 @@ class KeepingContact {
 
 		$url = $this->crm->build_url( 'analysis-group', [ 'group' => $current_group ] );
 		?>
-		<a href="<?php echo esc_url( $url ); ?>" class="footer-link">📊 Group Analysis</a>
+		<a href="<?php echo esc_url( $url ); ?>" class="footer-link">📊 Relationship Analysis</a>
 		<?php
 	}
 
@@ -740,83 +899,6 @@ class KeepingContact {
 	}
 
 	/**
-	 * Render Beeper section in person sidebar
-	 */
-	public function render_beeper_sidebar( $person, $is_team_member ) {
-		if ( ! $this->beeper->is_configured() ) {
-			return;
-		}
-
-		// Get chat IDs (handle migration from old single-value option)
-		$chat_ids = get_option( 'kc_beeper_chats_' . $person->username, [] );
-		if ( ! is_array( $chat_ids ) ) {
-			$chat_ids = [];
-		}
-		// Migrate from old single-value option
-		$old_chat_id = get_option( 'kc_beeper_chat_' . $person->username, '' );
-		if ( ! empty( $old_chat_id ) && ! in_array( $old_chat_id, $chat_ids ) ) {
-			$chat_ids[] = $old_chat_id;
-			update_option( 'kc_beeper_chats_' . $person->username, $chat_ids );
-			delete_option( 'kc_beeper_chat_' . $person->username );
-		}
-
-		// Only show if there's a schedule or already connected
-		$schedule = $this->storage->get_schedule( $person->username );
-		if ( empty( $schedule ) && empty( $chat_ids ) ) {
-			return;
-		}
-		?>
-		<div style="margin-top: 30px">
-			<h3 class="sidebar-section-heading">💬 Beeper</h3>
-
-			<?php foreach ( $chat_ids as $chat_id ) :
-				$chat = $this->beeper->get_chat( $chat_id );
-				$network = is_wp_error( $chat ) ? 'Unknown' : ( $chat['network'] ?? 'Connected' );
-				$title = $chat_id;
-				if ( ! is_wp_error( $chat ) ) {
-					$participants = $chat['participants']['items'] ?? [];
-					foreach ( $participants as $p ) {
-						if ( empty( $p['isSelf'] ) && ! empty( $p['fullName'] ) ) {
-							$title = $p['fullName'];
-							break;
-						}
-					}
-					if ( $title === $chat_id ) {
-						$title = $chat['title'] ?? $chat['name'] ?? $network;
-					}
-				}
-			?>
-				<div class="kc-beeper-chat">
-					<span class="kc-beeper-chat-info">
-						<?php echo esc_html( $title ); ?>
-						<span class="kc-beeper-chat-network">(<?php echo esc_html( $network ); ?>)</span>
-					</span>
-					<span class="kc-beeper-actions">
-						<button type="button" class="btn-sm btn-sync" onclick="kcBeeperSync('<?php echo esc_js( $person->username ); ?>', '<?php echo esc_js( $chat_id ); ?>')">
-							Sync
-						</button>
-						<button type="button" class="btn-sm btn-danger" onclick="kcBeeperUnlink('<?php echo esc_js( $person->username ); ?>', '<?php echo esc_js( $chat_id ); ?>')">
-							×
-						</button>
-					</span>
-				</div>
-			<?php endforeach; ?>
-
-			<?php if ( empty( $chat_ids ) ) : ?>
-			<button type="button" class="kc-beeper-add" onclick="kcBeeperSearch('<?php echo esc_js( $person->username ); ?>', '<?php echo esc_js( $person->name ); ?>')">
-				+ Connect Beeper
-			</button>
-		<?php else : ?>
-			<button type="button" class="kc-beeper-add" onclick="kcBeeperSearch('<?php echo esc_js( $person->username ); ?>', '<?php echo esc_js( $person->name ); ?>')">
-				+ Add Chat
-			</button>
-		<?php endif; ?>
-		</div>
-		<?php
-		$this->render_beeper_modal();
-	}
-
-	/**
 	 * Render Beeper search modal (once per page)
 	 */
 	private function render_beeper_modal() {
@@ -851,8 +933,6 @@ class KeepingContact {
 		} else {
 			echo '<script src="' . esc_url( plugin_dir_url( __DIR__ ) . 'assets/beeper.js' ) . '"></script>';
 		}
-		?>
-		<?php
 	}
 
 	/**

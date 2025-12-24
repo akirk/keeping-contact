@@ -88,8 +88,8 @@ if ( $beeper_configured ) {
 		<div class="header">
 			<div class="header-content">
 				<h1>Group Relationship Analysis</h1>
-				<div class="header-subtitle">
-					<a href="<?php echo esc_url( $crm->build_url( 'group.php', [ 'group' => $group_slug ] ) ); ?>" class="back-link">← Back to <?php echo esc_html( $group->group_name ); ?></a>
+				<div class="back-nav">
+					<a href="<?php echo esc_url( $crm->build_url( 'group.php', [ 'group' => $group_slug ] ) ); ?>">← Back to <?php echo esc_html( $group->group_name ); ?></a>
 				</div>
 			</div>
 		</div>
@@ -112,6 +112,7 @@ if ( $beeper_configured ) {
 				</div>
 
 				<div class="analysis-content" id="analysisContent" style="display: none;">
+					<p class="analysis-timeframe" id="analysisTimeframe"></p>
 					<div class="analysis-stats">
 						<div class="stat-card">
 							<div class="stat-card-title">People Analyzed</div>
