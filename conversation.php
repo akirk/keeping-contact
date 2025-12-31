@@ -8,9 +8,11 @@
 namespace KeepingContact;
 
 require_once __DIR__ . '/../personal-crm/personal-crm.php';
+require_once __DIR__ . '/../personal-crm/includes/local-llm.php';
 require_once __DIR__ . '/keeping-contact.php';
 
 use PersonalCRM\PersonalCrm;
+use PersonalCRM\LocalLLM;
 
 $crm = PersonalCrm::get_instance();
 extract( PersonalCrm::get_globals() );
@@ -39,10 +41,7 @@ $schedule = $kc_storage->get_schedule( $username );
 $stats = $kc_storage->get_contact_stats( $username );
 
 // Get linked Beeper chats
-$chat_ids = get_option( 'kc_beeper_chats_' . $username, [] );
-if ( ! is_array( $chat_ids ) ) {
-	$chat_ids = [];
-}
+$chat_ids = $kc_storage->get_beeper_chats( $username );
 
 // Get recent conversation context from first linked chat
 $recent_messages = [];
@@ -107,8 +106,9 @@ foreach ( $upcoming_events as $event ) {
 $email = $person->email ?? '';
 $phone_numbers = apply_filters( 'personal_crm_person_phone_numbers', [], $username );
 
-// Ollama model
-$ollama_model = PersonalCrm::get_ollama_model();
+$local_model = LocalLLM::get_model();
+$local_provider = LocalLLM::get_provider_key();
+$local_base_url = LocalLLM::get_base_url();
 
 ?>
 <!DOCTYPE html>
@@ -307,9 +307,9 @@ $ollama_model = PersonalCrm::get_ollama_model();
 						<h4>AI Draft Assistant</h4>
 						<div class="ai-model-selector">
 							<select id="modelSelect">
-								<option value="<?php echo esc_attr( $ollama_model ); ?>"><?php echo esc_html( $ollama_model ); ?></option>
+								<option value="<?php echo esc_attr( $local_model ); ?>"><?php echo esc_html( $local_model ); ?></option>
 							</select>
-							<button type="button" class="btn-refresh-models" onclick="loadOllamaModels()" title="Refresh models">↻</button>
+							<button type="button" class="btn-refresh-models" onclick="loadLocalModels()" title="Refresh models">↻</button>
 						</div>
 					</div>
 					<div class="ai-draft-prompt">
@@ -376,7 +376,9 @@ $ollama_model = PersonalCrm::get_ollama_model();
 
 	<script>
 	window.kcDraftConfig = {
-		ollamaModel: <?php echo json_encode( $ollama_model ); ?>,
+		localModel: <?php echo json_encode( $local_model ); ?>,
+		localProvider: <?php echo json_encode( $local_provider ); ?>,
+		localBaseUrl: <?php echo json_encode( $local_base_url ); ?>,
 		personName: <?php echo json_encode( $person->name ); ?>,
 		personFirstName: <?php echo json_encode( explode( ' ', $person->name )[0] ); ?>,
 		personUsername: <?php echo json_encode( $username ); ?>,
@@ -397,8 +399,10 @@ $ollama_model = PersonalCrm::get_ollama_model();
 	</script>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_script' ) ) {
-		wp_app_enqueue_script( 'kc-conversation', plugin_dir_url( __FILE__ ) . 'assets/conversation.js', [], '1.0', true );
+		wp_app_enqueue_script( 'personal-crm-local-llm', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/local-llm.js', [], '1.0', true );
+		wp_app_enqueue_script( 'kc-conversation', plugin_dir_url( __FILE__ ) . 'assets/conversation.js', [ 'personal-crm-local-llm' ], '1.0', true );
 	} else {
+		echo '<script src="' . esc_url( plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/local-llm.js' ) . '"></script>';
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/conversation.js' ) . '"></script>';
 	}
 	?>

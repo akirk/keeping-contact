@@ -56,6 +56,8 @@ class KeepingContact {
 		add_action( 'wp_ajax_kc_beeper_messages', [ __CLASS__, 'static_ajax_beeper_messages' ] );
 		add_action( 'wp_ajax_kc_render_sidebar', [ __CLASS__, 'static_ajax_render_sidebar' ] );
 		add_action( 'wp_ajax_kc_set_schedule', [ __CLASS__, 'static_ajax_set_schedule' ] );
+		add_action( 'wp_ajax_kc_beeper_import', [ __CLASS__, 'static_ajax_beeper_import' ] );
+		add_action( 'wp_ajax_kc_beeper_load_chats', [ __CLASS__, 'static_ajax_beeper_load_chats' ] );
 	}
 
 	private static function get_beeper() {
@@ -161,15 +163,8 @@ class KeepingContact {
 			wp_send_json_error( 'Username and chat_id required' );
 		}
 
-		$chat_ids = get_option( 'kc_beeper_chats_' . $username, [] );
-		if ( ! is_array( $chat_ids ) ) {
-			$chat_ids = ! empty( $chat_ids ) ? [ $chat_ids ] : [];
-		}
-
-		if ( ! in_array( $chat_id, $chat_ids ) ) {
-			$chat_ids[] = $chat_id;
-			update_option( 'kc_beeper_chats_' . $username, $chat_ids );
-		}
+		$storage = self::get_storage();
+		$storage->link_beeper_chat( $username, $chat_id );
 
 		self::static_sync_beeper_contact( $username, $chat_id );
 
@@ -186,13 +181,8 @@ class KeepingContact {
 			wp_send_json_error( 'Username and chat_id required' );
 		}
 
-		$chat_ids = get_option( 'kc_beeper_chats_' . $username, [] );
-		if ( ! is_array( $chat_ids ) ) {
-			$chat_ids = [];
-		}
-
-		$chat_ids = array_values( array_diff( $chat_ids, [ $chat_id ] ) );
-		update_option( 'kc_beeper_chats_' . $username, $chat_ids );
+		$storage = self::get_storage();
+		$storage->unlink_beeper_chat( $username, $chat_id );
 
 		wp_send_json_success( [ 'unlinked' => true ] );
 	}
@@ -373,6 +363,164 @@ class KeepingContact {
 		wp_send_json_success( [ 'saved' => true ] );
 	}
 
+	public static function static_ajax_beeper_import() {
+		check_ajax_referer( 'kc_beeper', '_wpnonce' );
+
+		// Accept either single chat_id or array of chat_ids
+		$chat_ids_json = $_POST['chat_ids'] ?? '';
+		$chat_ids = [];
+
+		if ( ! empty( $chat_ids_json ) ) {
+			$chat_ids = json_decode( stripslashes( $chat_ids_json ), true );
+			if ( ! is_array( $chat_ids ) ) {
+				$chat_ids = [];
+			}
+		}
+
+		// Fallback to single chat_id for backwards compatibility
+		if ( empty( $chat_ids ) ) {
+			$single_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
+			if ( ! empty( $single_id ) ) {
+				$chat_ids = [ $single_id ];
+			}
+		}
+
+		if ( empty( $chat_ids ) ) {
+			wp_send_json_error( 'Chat ID required' );
+		}
+
+		$name_override = sanitize_text_field( $_POST['name'] ?? '' );
+		$beeper = self::get_beeper();
+
+		// Get info from first chat
+		$chat = $beeper->get_chat( $chat_ids[0] );
+
+		if ( is_wp_error( $chat ) ) {
+			wp_send_json_error( 'Failed to get chat info: ' . $chat->get_error_message() );
+		}
+
+		$name = $name_override;
+		$phone = '';
+
+		if ( ! empty( $chat['participants']['items'] ) ) {
+			foreach ( $chat['participants']['items'] as $participant ) {
+				if ( empty( $participant['isSelf'] ) ) {
+					if ( empty( $name ) && ! empty( $participant['fullName'] ) ) {
+						$name = $participant['fullName'];
+					}
+					if ( ! empty( $participant['identifier'] ) ) {
+						$phone = $participant['identifier'];
+					} elseif ( ! empty( $participant['phoneNumber'] ) ) {
+						$phone = $participant['phoneNumber'];
+					}
+					break;
+				}
+			}
+		}
+
+		if ( empty( $name ) ) {
+			$name = $chat['title'] ?? 'Unknown Contact';
+		}
+
+		$base_username = sanitize_title( $name );
+		if ( empty( $base_username ) ) {
+			$base_username = 'contact';
+		}
+
+		$crm = \PersonalCRM\PersonalCrm::get_instance();
+		$username = $base_username;
+		$counter = 1;
+		while ( $crm->storage->get_person( $username ) ) {
+			$counter++;
+			$username = $base_username . '-' . $counter;
+		}
+
+		$person_data = [
+			'name' => $name,
+		];
+
+		$result = $crm->storage->save_person( $username, $person_data, [] );
+
+		if ( ! $result ) {
+			wp_send_json_error( 'Failed to create contact' );
+		}
+
+		if ( ! empty( $phone ) && class_exists( '\ContactSyncPersonalCRM\CardDAVStorage' ) ) {
+			$person = $crm->storage->get_person( $username );
+			if ( $person && $person->id ) {
+				global $wpdb;
+				$carddav_storage = new \ContactSyncPersonalCRM\CardDAVStorage( $wpdb );
+				$carddav_storage->save_phone( $person->id, $phone, 'mobile', true );
+			}
+		}
+
+		$storage = self::get_storage();
+
+		// Link ALL chat IDs to this person
+		foreach ( $chat_ids as $chat_id ) {
+			$storage->link_beeper_chat( $username, sanitize_text_field( $chat_id ) );
+		}
+
+		// Sync from first chat
+		self::static_sync_beeper_contact( $username, $chat_ids[0] );
+
+		wp_send_json_success( [
+			'username' => $username,
+			'name'     => $name,
+			'url'      => home_url( '/crm/person/' . $username ),
+		] );
+	}
+
+	public static function static_ajax_beeper_load_chats() {
+		check_ajax_referer( 'kc_beeper', '_wpnonce' );
+
+		$limit = intval( $_POST['limit'] ?? 100 );
+		$limit = max( 50, min( 1000, $limit ) );
+
+		$beeper = self::get_beeper();
+		$storage = self::get_storage();
+
+		$all_chats_result = $beeper->get_all_chats( $limit );
+		$all_chats = [];
+		$has_more = false;
+
+		if ( ! is_wp_error( $all_chats_result ) ) {
+			$all_chats = $all_chats_result['items'] ?? [];
+			$has_more = count( $all_chats ) >= $limit;
+		}
+
+		$chat_to_username = $storage->get_all_beeper_chat_mappings();
+
+		$chats_for_js = [];
+		foreach ( $all_chats as $chat ) {
+			$name = $chat['title'] ?? 'Unknown';
+			if ( ! empty( $chat['participants']['items'] ) ) {
+				foreach ( $chat['participants']['items'] as $p ) {
+					if ( empty( $p['isSelf'] ) && ! empty( $p['fullName'] ) ) {
+						$name = $p['fullName'];
+						break;
+					}
+				}
+			}
+
+			$linked_username = $chat_to_username[ $chat['id'] ] ?? null;
+
+			$chats_for_js[] = [
+				'id'             => $chat['id'],
+				'name'           => $name,
+				'network'        => $chat['network'] ?? '',
+				'lastActivity'   => $chat['lastActivity'] ?? '',
+				'isLinked'       => $linked_username !== null,
+				'linkedUsername' => $linked_username,
+			];
+		}
+
+		wp_send_json_success( [
+			'chats'   => $chats_for_js,
+			'hasMore' => $has_more,
+		] );
+	}
+
 	public static function get_instance() {
 		return self::$instance;
 	}
@@ -392,6 +540,7 @@ class KeepingContact {
 		$app->route( 'conversations/{person}', KEEPING_CONTACT_PATH . 'conversation.php' );
 		$app->route( 'analysis/{person}', KEEPING_CONTACT_PATH . 'analysis.php' );
 		$app->route( 'analysis-group/{group}', KEEPING_CONTACT_PATH . 'analysis-group.php' );
+		$app->route( 'import-beeper', KEEPING_CONTACT_PATH . 'import-beeper.php' );
 	}
 
 	public static function get_globals() {
@@ -424,17 +573,7 @@ class KeepingContact {
 		// Get Beeper chat IDs
 		$chat_ids = [];
 		if ( $this->beeper->is_configured() ) {
-			$chat_ids = get_option( 'kc_beeper_chats_' . $person->username, [] );
-			if ( ! is_array( $chat_ids ) ) {
-				$chat_ids = [];
-			}
-			// Migrate from old single-value option
-			$old_chat_id = get_option( 'kc_beeper_chat_' . $person->username, '' );
-			if ( ! empty( $old_chat_id ) && ! in_array( $old_chat_id, $chat_ids ) ) {
-				$chat_ids[] = $old_chat_id;
-				update_option( 'kc_beeper_chats_' . $person->username, $chat_ids );
-				delete_option( 'kc_beeper_chat_' . $person->username );
-			}
+			$chat_ids = $this->storage->get_beeper_chats( $person->username );
 		}
 
 		$status_class = str_replace( '_', '-', $stats['status'] );
@@ -711,14 +850,10 @@ class KeepingContact {
 		// Get people mapped to Beeper but without a schedule
 		$beeper_without_schedule = [];
 		$all_schedules = $this->storage->get_all_schedules();
-		$beeper_mappings = $wpdb->get_results(
-			"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'kc_beeper_chats_%'",
-			ARRAY_A
-		);
-		foreach ( $beeper_mappings as $mapping ) {
-			$username = str_replace( 'kc_beeper_chats_', '', $mapping['option_name'] );
-			$chat_ids = maybe_unserialize( $mapping['option_value'] );
-			if ( ! empty( $chat_ids ) && ! isset( $all_schedules[ $username ] ) ) {
+		$chat_mappings = $this->storage->get_all_beeper_chat_mappings();
+		$usernames_with_chats = array_unique( array_values( $chat_mappings ) );
+		foreach ( $usernames_with_chats as $username ) {
+			if ( ! isset( $all_schedules[ $username ] ) ) {
 				if ( empty( $current_group ) || empty( $members ) || isset( $members[ $username ] ) ) {
 					$beeper_without_schedule[] = $username;
 				}
@@ -942,10 +1077,7 @@ class KeepingContact {
 		if ( ! $is_editing ) return;
 
 		$username = $edit_data->username ?? '';
-		$chat_ids = get_option( 'kc_beeper_chats_' . $username, [] );
-		if ( ! is_array( $chat_ids ) ) {
-			$chat_ids = [];
-		}
+		$chat_ids = $this->storage->get_beeper_chats( $username );
 		?>
 		<div class="divider-section">
 			<h4 class="section-heading">Beeper Integration</h4>

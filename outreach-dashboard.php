@@ -23,22 +23,14 @@ $overdue = $kc_storage->get_overdue_contacts();
 $upcoming = $kc_storage->get_upcoming_contacts( 14 );
 
 // Get people mapped to Beeper but without a schedule
-global $wpdb;
 $beeper_without_schedule = [];
 $all_schedules = $kc_storage->get_all_schedules();
-$beeper_mappings = $wpdb->get_results(
-	"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'kc_beeper_chats_%'",
-	ARRAY_A
-);
+$chat_mappings = $kc_storage->get_all_beeper_chat_mappings();
 $beeper_connected = [];
-foreach ( $beeper_mappings as $mapping ) {
-	$username = str_replace( 'kc_beeper_chats_', '', $mapping['option_name'] );
-	$chat_ids = maybe_unserialize( $mapping['option_value'] );
-	if ( ! empty( $chat_ids ) ) {
-		$beeper_connected[ $username ] = true;
-		if ( ! isset( $all_schedules[ $username ] ) ) {
-			$beeper_without_schedule[] = $username;
-		}
+foreach ( $chat_mappings as $chat_id => $username ) {
+	$beeper_connected[ $username ] = true;
+	if ( ! isset( $all_schedules[ $username ] ) && ! in_array( $username, $beeper_without_schedule ) ) {
+		$beeper_without_schedule[] = $username;
 	}
 }
 

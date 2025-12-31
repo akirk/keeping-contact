@@ -38,7 +38,7 @@ Routes are registered via Personal CRM's routing system:
 
 ### Beeper Integration
 
-Chat mappings stored as WordPress options: `kc_beeper_chats_{username}` (array of chat IDs per person).
+Chat mappings stored in `keeping_contact_beeper_chats` table (chat_id, username).
 
 AJAX endpoints prefixed with `kc_beeper_*` handle search, link/unlink, sync, and message sending.
 

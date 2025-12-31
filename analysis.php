@@ -34,10 +34,7 @@ if ( ! $person ) {
 	exit;
 }
 
-$chat_ids = get_option( 'kc_beeper_chats_' . $username, [] );
-if ( ! is_array( $chat_ids ) ) {
-	$chat_ids = [];
-}
+$chat_ids = $kc_storage->get_beeper_chats( $username );
 
 $beeper_configured = $beeper->is_configured();
 

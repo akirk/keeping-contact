@@ -51,6 +51,15 @@ class Storage extends \WpApp\BaseStorage {
 				KEY idx_username (username),
 				KEY idx_contact_date (contact_date),
 				KEY idx_username_date (username, contact_date)
+			",
+			'keeping_contact_beeper_chats' => "
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				username varchar(100) NOT NULL,
+				chat_id varchar(255) NOT NULL,
+				created_at datetime DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (id),
+				UNIQUE KEY unique_chat (chat_id),
+				KEY idx_username (username)
 			"
 		);
 	}
@@ -318,5 +327,67 @@ class Storage extends \WpApp\BaseStorage {
 		}
 
 		return $stats;
+	}
+
+	/**
+	 * Get all chat IDs linked to a person
+	 */
+	public function get_beeper_chats( $username ) {
+		$results = $this->wpdb->get_col( $this->wpdb->prepare(
+			"SELECT chat_id FROM {$this->wpdb->prefix}keeping_contact_beeper_chats WHERE username = %s",
+			$username
+		) );
+		return $results ?: [];
+	}
+
+	/**
+	 * Link a chat to a person
+	 */
+	public function link_beeper_chat( $username, $chat_id ) {
+		return $this->wpdb->replace(
+			$this->wpdb->prefix . 'keeping_contact_beeper_chats',
+			[
+				'username'   => $username,
+				'chat_id'    => $chat_id,
+				'created_at' => current_time( 'mysql' ),
+			],
+			[ '%s', '%s', '%s' ]
+		);
+	}
+
+	/**
+	 * Unlink a chat from a person
+	 */
+	public function unlink_beeper_chat( $username, $chat_id ) {
+		return $this->wpdb->delete(
+			$this->wpdb->prefix . 'keeping_contact_beeper_chats',
+			[ 'username' => $username, 'chat_id' => $chat_id ],
+			[ '%s', '%s' ]
+		);
+	}
+
+	/**
+	 * Get username for a chat ID
+	 */
+	public function get_username_for_chat( $chat_id ) {
+		return $this->wpdb->get_var( $this->wpdb->prepare(
+			"SELECT username FROM {$this->wpdb->prefix}keeping_contact_beeper_chats WHERE chat_id = %s",
+			$chat_id
+		) );
+	}
+
+	/**
+	 * Get all chat mappings (chat_id => username)
+	 */
+	public function get_all_beeper_chat_mappings() {
+		$results = $this->wpdb->get_results(
+			"SELECT chat_id, username FROM {$this->wpdb->prefix}keeping_contact_beeper_chats",
+			ARRAY_A
+		);
+		$mappings = [];
+		foreach ( $results as $row ) {
+			$mappings[ $row['chat_id'] ] = $row['username'];
+		}
+		return $mappings;
 	}
 }

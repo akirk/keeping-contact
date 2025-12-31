@@ -19,26 +19,27 @@ KeepingContact::init( $crm );
 $kc = KeepingContact::get_instance();
 $beeper = $kc->beeper;
 
-// Get all options that store beeper chat links
-global $wpdb;
-$options = $wpdb->get_results(
-	"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE 'kc_beeper_chats_%'",
-	ARRAY_A
-);
+// Get all beeper chat mappings
+$chat_mappings = $kc->storage->get_all_beeper_chat_mappings();
+
+// Group by username
+$chats_by_username = [];
+foreach ( $chat_mappings as $chat_id => $username ) {
+	if ( ! isset( $chats_by_username[ $username ] ) ) {
+		$chats_by_username[ $username ] = [];
+	}
+	$chats_by_username[ $username ][] = $chat_id;
+}
 
 $linked_people = [];
-foreach ( $options as $opt ) {
-	$username = str_replace( 'kc_beeper_chats_', '', $opt['option_name'] );
-	$chat_ids = maybe_unserialize( $opt['option_value'] );
-	if ( ! empty( $chat_ids ) && is_array( $chat_ids ) ) {
-		$person = $crm->storage->get_person( $username );
-		if ( $person ) {
-			$linked_people[] = [
-				'username' => $username,
-				'person' => $person,
-				'chat_ids' => $chat_ids,
-			];
-		}
+foreach ( $chats_by_username as $username => $chat_ids ) {
+	$person = $crm->storage->get_person( $username );
+	if ( $person ) {
+		$linked_people[] = [
+			'username' => $username,
+			'person' => $person,
+			'chat_ids' => $chat_ids,
+		];
 	}
 }
 

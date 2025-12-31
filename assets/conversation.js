@@ -309,29 +309,31 @@
 	// Draft generation
 	var draftCounter = 0;
 
-	window.loadOllamaModels = async function() {
+	window.loadLocalModels = async function() {
 		var select = document.getElementById('modelSelect');
 		var currentValue = select.value;
 
 		try {
-			var response = await fetch('http://localhost:11434/api/tags');
-			if (response.ok) {
-				var data = await response.json();
-				if (data.models && data.models.length > 0) {
-					select.textContent = '';
-					data.models.forEach(function(model) {
-						var option = document.createElement('option');
-						option.value = model.name;
-						option.textContent = model.name;
-						if (model.name === currentValue) {
-							option.selected = true;
-						}
-						select.appendChild(option);
-					});
-				}
+			var llm = new PersonalCrmLocalLLM({
+				provider: config.localProvider,
+				baseUrl: config.localBaseUrl,
+				model: currentValue
+			});
+			var result = await llm.listModels();
+			if (result.success && result.models.length > 0) {
+				select.textContent = '';
+				result.models.forEach(function(model) {
+					var option = document.createElement('option');
+					option.value = model.name;
+					option.textContent = model.name;
+					if (model.name === currentValue) {
+						option.selected = true;
+					}
+					select.appendChild(option);
+				});
 			}
 		} catch (e) {
-			console.log('Could not load Ollama models');
+			console.log('Could not load local LLM models');
 		}
 	};
 
@@ -452,13 +454,17 @@
 		contentDiv.textContent = 'Thinking...';
 		contentDiv.classList.add('ai-thinking');
 
-		var ollama = new PersonalCrmOllama({ model: selectedModel });
+		var llm = new PersonalCrmLocalLLM({
+			provider: config.localProvider,
+			baseUrl: config.localBaseUrl,
+			model: selectedModel
+		});
 		var messages = [
 			{ role: 'system', content: systemPrompt },
 			{ role: 'user', content: userMessage }
 		];
 
-		var result = await ollama.chatStream(messages, {
+		var result = await llm.chatStream(messages, {
 			onChunk: function(chunk) {
 				if (contentDiv.classList.contains('ai-thinking')) {
 					contentDiv.classList.remove('ai-thinking');
@@ -473,7 +479,7 @@
 				var errorMsg = document.createElement('p');
 				errorMsg.textContent = 'Error: ' + errorInfo.message;
 				contentDiv.appendChild(errorMsg);
-				ollama.renderInstructions(contentDiv, errorInfo);
+				llm.renderInstructions(contentDiv, errorInfo);
 			},
 			onComplete: function() {
 				btn.disabled = false;
@@ -655,7 +661,7 @@
 		}
 
 		// Load models
-		loadOllamaModels();
+		loadLocalModels();
 
 		// Enter key to generate
 		var aiPrompt = document.getElementById('aiPrompt');

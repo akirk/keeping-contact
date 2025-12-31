@@ -103,6 +103,38 @@ class Beeper {
 	}
 
 	/**
+	 * Get all chats (1:1 conversations only)
+	 */
+	public function get_all_chats( $limit = 200 ) {
+		$result = $this->request( '/chats', [ 'limit' => $limit ] );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		$chats = [];
+		$items = $result['items'] ?? $result;
+
+		if ( ! is_array( $items ) ) {
+			return [ 'items' => [] ];
+		}
+
+		foreach ( $items as $chat ) {
+			if ( ( $chat['type'] ?? '' ) === 'single' ) {
+				$chats[] = $chat;
+			}
+		}
+
+		usort( $chats, function( $a, $b ) {
+			$a_time = $a['lastActivity'] ?? '';
+			$b_time = $b['lastActivity'] ?? '';
+			return strcmp( $b_time, $a_time );
+		} );
+
+		return [ 'items' => $chats ];
+	}
+
+	/**
 	 * Get messages from a chat with cursor-based pagination
 	 *
 	 * @param string $chat_id Chat ID

@@ -50,8 +50,8 @@ if ( $beeper_configured ) {
 	}
 
 	foreach ( $members as $username => $person ) {
-		$chat_ids = get_option( 'kc_beeper_chats_' . $username, [] );
-		if ( ! empty( $chat_ids ) && is_array( $chat_ids ) ) {
+		$chat_ids = $kc_storage->get_beeper_chats( $username );
+		if ( ! empty( $chat_ids ) ) {
 			$people_with_chats[] = [
 				'username'  => $username,
 				'name'      => $person->get_display_name_with_nickname(),
