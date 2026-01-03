@@ -35,11 +35,12 @@ class Beeper {
 		}
 
 		$response = wp_remote_get( $url, [
-			'headers' => [
+			'headers'   => [
 				'Authorization' => 'Bearer ' . $this->token,
 				'Content-Type'  => 'application/json',
 			],
-			'timeout' => 15,
+			'timeout'   => 15,
+			'sslverify' => false,
 		] );
 
 		if ( is_wp_error( $response ) ) {
@@ -262,15 +263,16 @@ class Beeper {
 		}
 
 		$response = wp_remote_post( $this->api_base . '/messages', [
-			'headers' => [
+			'headers'   => [
 				'Authorization' => 'Bearer ' . $this->token,
 				'Content-Type'  => 'application/json',
 			],
-			'body'    => json_encode( [
+			'body'      => json_encode( [
 				'chatID' => $chat_id,
 				'text'   => $text,
 			] ),
-			'timeout' => 15,
+			'timeout'   => 15,
+			'sslverify' => false,
 		] );
 
 		if ( is_wp_error( $response ) ) {
