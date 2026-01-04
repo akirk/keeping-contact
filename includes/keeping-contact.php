@@ -33,6 +33,7 @@ class KeepingContact {
 		add_filter( 'personal_crm_build_url', [ $this, 'build_clean_urls' ], 10, 2 );
 		add_action( 'wp_app_admin_bar_menu', [ $this, 'add_masterbar_menu' ] );
 		add_action( 'personal_crm_footer_links', [ $this, 'render_group_analysis_link' ], 10, 2 );
+		add_filter( 'personal_crm_welcome_sections', [ $this, 'register_welcome_section' ], 10, 2 );
 	}
 
 	/**
@@ -42,6 +43,41 @@ class KeepingContact {
 		if ( function_exists( 'wp_app_enqueue_style' ) ) {
 			wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __DIR__ ) . 'assets/style.css' );
 		}
+	}
+
+	/**
+	 * Register welcome page section for Beeper import
+	 */
+	public function register_welcome_section( $sections, $crm ) {
+		if ( ! $this->beeper->is_configured() ) {
+			return $sections;
+		}
+
+		$sections[] = array(
+			'id'          => 'beeper-import',
+			'title'       => 'Import from Beeper',
+			'description' => 'Import your messaging conversations as contacts.',
+			'callback'    => [ $this, 'render_welcome_beeper_section' ],
+			'priority'    => 15,
+			'icon'        => '💬',
+		);
+
+		return $sections;
+	}
+
+	/**
+	 * Render Beeper import section on welcome page
+	 */
+	public function render_welcome_beeper_section( $crm ) {
+		$import_url = $crm->build_url( 'import-beeper' );
+		?>
+		<div class="welcome-section-content">
+			<p>Connect your Beeper conversations to automatically track contact history with your network.</p>
+			<a href="<?php echo esc_url( $import_url ); ?>" class="btn btn-secondary">
+				Browse Beeper Chats
+			</a>
+		</div>
+		<?php
 	}
 
 	public static function register_ajax_handlers() {
