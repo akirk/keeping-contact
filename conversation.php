@@ -65,8 +65,10 @@ if ( ! $beeper->is_configured() ) {
 	$has_more_messages = $context_result['has_more'];
 	$next_cursor = $context_result['next_cursor'];
 
-	if ( empty( $recent_messages ) && ! $cursor ) {
-		$beeper_error = 'Could not load messages. Make sure Beeper is running.';
+	if ( ! empty( $context_result['error'] ) ) {
+		$beeper_error = $context_result['error'];
+	} elseif ( empty( $recent_messages ) && ! $cursor ) {
+		$beeper_error = 'No messages found in this chat.';
 	} else {
 		// Get more messages for style analysis (user's own messages)
 		$style_result = $beeper->get_recent_context( $active_chat, 50 );

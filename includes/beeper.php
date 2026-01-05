@@ -219,7 +219,16 @@ class Beeper {
 	public function get_recent_context( $chat_id, $limit = 5, $cursor = null ) {
 		$response = $this->get_chat_messages( $chat_id, $limit, $cursor, 'before' );
 
-		if ( is_wp_error( $response ) || empty( $response['items'] ) ) {
+		if ( is_wp_error( $response ) ) {
+			return [
+				'messages'    => [],
+				'has_more'    => false,
+				'next_cursor' => null,
+				'error'       => $response->get_error_message(),
+			];
+		}
+
+		if ( empty( $response['items'] ) ) {
 			return [
 				'messages'    => [],
 				'has_more'    => false,

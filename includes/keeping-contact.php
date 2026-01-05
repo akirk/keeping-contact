@@ -49,10 +49,6 @@ class KeepingContact {
 	 * Register welcome page section for Beeper import
 	 */
 	public function register_welcome_section( $sections, $crm ) {
-		if ( ! $this->beeper->is_configured() ) {
-			return $sections;
-		}
-
 		$sections[] = array(
 			'id'          => 'beeper-import',
 			'title'       => 'Import from Beeper',
@@ -70,14 +66,88 @@ class KeepingContact {
 	 */
 	public function render_welcome_beeper_section( $crm ) {
 		$import_url = $crm->build_url( 'import-beeper' );
-		?>
-		<div class="welcome-section-content">
-			<p>Connect your Beeper conversations to automatically track contact history with your network.</p>
-			<a href="<?php echo esc_url( $import_url ); ?>" class="btn btn-secondary">
-				Browse Beeper Chats
-			</a>
-		</div>
-		<?php
+
+		if ( $this->beeper->is_configured() ) {
+			?>
+			<div class="welcome-section-content">
+				<p>Connect your Beeper conversations to automatically track contact history with your network.</p>
+				<a href="<?php echo esc_url( $import_url ); ?>" class="btn btn-secondary">
+					Browse Beeper Chats
+				</a>
+			</div>
+			<?php
+		} else {
+			?>
+			<div class="welcome-section-content">
+				<p>Connect to Beeper to import your messaging conversations and track contact history.</p>
+				<form id="welcomeBeeperForm" class="welcome-beeper-form">
+					<?php wp_nonce_field( 'kc_beeper', '_wpnonce' ); ?>
+					<div class="form-group">
+						<label for="welcome_beeper_token">API Token</label>
+						<input type="password" id="welcome_beeper_token" name="token"
+						       placeholder="Enter your Beeper API token">
+						<p class="help-text">
+							Open Beeper Desktop → Settings → Developer → Create API Token
+						</p>
+					</div>
+					<div class="form-actions">
+						<button type="submit" class="btn btn-primary">Connect Beeper</button>
+					</div>
+					<div id="welcomeBeeperStatus"></div>
+				</form>
+			</div>
+			<script>
+			document.getElementById('welcomeBeeperForm').addEventListener('submit', function(e) {
+				e.preventDefault();
+				var token = document.getElementById('welcome_beeper_token').value;
+				var statusDiv = document.getElementById('welcomeBeeperStatus');
+				var importUrl = <?php echo wp_json_encode( $import_url ); ?>;
+
+				function showStatus(message, isError, isSuccess) {
+					while (statusDiv.firstChild) statusDiv.removeChild(statusDiv.firstChild);
+					var div = document.createElement('div');
+					div.style.cssText = 'padding: 8px; border-radius: 4px; margin-top: 12px;';
+					if (isError) {
+						div.style.background = '#f8d7da';
+						div.style.color = '#721c24';
+					} else if (isSuccess) {
+						div.style.background = '#d4edda';
+						div.style.color = '#155724';
+					} else {
+						div.style.color = '#666';
+					}
+					div.textContent = message;
+					statusDiv.appendChild(div);
+				}
+
+				if (!token.trim()) {
+					showStatus('Please enter an API token', true, false);
+					return;
+				}
+
+				showStatus('Connecting...', false, false);
+
+				fetch('<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+					body: 'action=kc_beeper_save_token&token=' + encodeURIComponent(token) + '&_wpnonce=<?php echo wp_create_nonce( 'kc_beeper' ); ?>'
+				})
+				.then(function(r) { return r.json(); })
+				.then(function(data) {
+					if (data.success && data.data.connected) {
+						showStatus('Connected! Redirecting to import...', false, true);
+						setTimeout(function() { window.location.href = importUrl; }, 1000);
+					} else {
+						showStatus('Error: ' + (data.data || 'Connection failed'), true, false);
+					}
+				})
+				.catch(function(err) {
+					showStatus('Error: ' + err.message, true, false);
+				});
+			});
+			</script>
+			<?php
+		}
 	}
 
 	public static function register_ajax_handlers() {
