@@ -33,6 +33,15 @@ register_activation_hook( __FILE__, function() {
 KeepingContact::register_ajax_handlers();
 
 add_action( 'personal_crm_loaded', function( $crm ) {
+	// Register tables for export/import
+	$crm->register_export_table( 'keeping_contact_schedules', array(
+		'unique_key' => 'username',
+	) );
+	$crm->register_export_table( 'keeping_contact_log' );
+	$crm->register_export_table( 'keeping_contact_beeper_chats', array(
+		'unique_key' => 'chat_id',
+	) );
+
 	KeepingContact::register_routes( $crm );
 	KeepingContact::init( $crm );
 } );
