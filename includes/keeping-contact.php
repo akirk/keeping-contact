@@ -221,6 +221,17 @@ class KeepingContact {
 		$storage = self::get_storage();
 		$storage->link_beeper_chat( $username, $chat_id );
 
+		$phone = sanitize_text_field( $_POST['phone'] ?? '' );
+
+		/**
+		 * Fires when a Beeper chat is linked to a person.
+		 *
+		 * @param string $username The person's username.
+		 * @param string $chat_id  The Beeper chat ID.
+		 * @param string $phone    The phone number from the chat participant (may be empty).
+		 */
+		do_action( 'keeping_contact_beeper_chat_linked', $username, $chat_id, $phone );
+
 		wp_send_json_success( [ 'linked' => true ] );
 	}
 

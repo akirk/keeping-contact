@@ -40,21 +40,85 @@
 		}
 	};
 
+	async function kcBeeperPerformSearch(query) {
+		var resultsDiv = document.getElementById('kcBeeperResults');
+		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
+
+		var searchingDiv = document.createElement('div');
+		searchingDiv.className = 'kc-searching';
+		searchingDiv.style.display = 'block';
+		searchingDiv.textContent = 'Searching...';
+		resultsDiv.appendChild(searchingDiv);
+
+		var client = getBeeperClient();
+		if (!client) {
+			kcBeeperShowError('Beeper not configured');
+			return;
+		}
+
+		var result = await client.searchChats(query, 10);
+
+		if (result.success) {
+			kcBeeperRenderResults({ success: true, data: { chats: result.data.items, queries: [query] } }, query);
+		} else {
+			kcBeeperShowError(result.error || 'Search failed');
+		}
+	}
+
 	function kcBeeperRenderResults(data, name) {
 		var resultsDiv = document.getElementById('kcBeeperResults');
 		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
+
+		var searchDiv = document.createElement('div');
+		searchDiv.className = 'kc-search-form';
 
 		if (data.data && data.data.queries && data.data.queries.length > 0) {
 			var queriesDiv = document.createElement('div');
 			queriesDiv.className = 'kc-search-queries';
 			queriesDiv.textContent = 'Searched for: ' + data.data.queries.join(', ');
-			resultsDiv.appendChild(queriesDiv);
+			searchDiv.appendChild(queriesDiv);
 		}
+
+		var inputWrapper = document.createElement('div');
+		inputWrapper.className = 'kc-search-input-wrapper';
+
+		var searchInput = document.createElement('input');
+		searchInput.type = 'text';
+		searchInput.id = 'kcBeeperSearchInput';
+		searchInput.className = 'kc-search-input';
+		searchInput.placeholder = 'Search by name or phone...';
+		searchInput.value = name || '';
+
+		var searchBtn = document.createElement('button');
+		searchBtn.type = 'button';
+		searchBtn.className = 'btn btn-primary kc-search-btn';
+		searchBtn.textContent = 'Search';
+		searchBtn.onclick = function() {
+			var query = searchInput.value.trim();
+			if (query) {
+				kcBeeperPerformSearch(query);
+			}
+		};
+
+		searchInput.addEventListener('keypress', function(e) {
+			if (e.key === 'Enter') {
+				var query = searchInput.value.trim();
+				if (query) {
+					kcBeeperPerformSearch(query);
+				}
+			}
+		});
+
+		inputWrapper.appendChild(searchInput);
+		inputWrapper.appendChild(searchBtn);
+		searchDiv.appendChild(inputWrapper);
+		resultsDiv.appendChild(searchDiv);
 
 		if (data.success && data.data.chats && data.data.chats.length > 0) {
 			if (data.data.chats.length === 1) {
 				var chat = data.data.chats[0];
 				var chatName = getChatName(chat);
+				var chatPhone = getChatPhone(chat);
 
 				var autoConnectDiv = document.createElement('div');
 				autoConnectDiv.className = 'kc-auto-connect';
@@ -62,7 +126,7 @@
 				resultsDiv.appendChild(autoConnectDiv);
 
 				setTimeout(function() {
-					kcBeeperLink(chat.id);
+					kcBeeperLink(chat.id, chatPhone);
 				}, 500);
 				return;
 			}
@@ -73,9 +137,10 @@
 			resultsDiv.appendChild(hint);
 
 			data.data.chats.forEach(function(chat) {
+				var chatPhone = getChatPhone(chat);
 				var item = document.createElement('div');
 				item.className = 'kc-chat-result';
-				item.onclick = function() { kcBeeperLink(chat.id); };
+				item.onclick = function() { kcBeeperLink(chat.id, chatPhone); };
 
 				var chatName = getChatName(chat);
 
@@ -117,6 +182,16 @@
 		return chatName;
 	}
 
+	function getChatPhone(chat) {
+		if (chat.participants && chat.participants.items) {
+			var other = chat.participants.items.find(function(p) { return !p.isSelf; });
+			if (other) {
+				return other.identifier || other.phoneNumber || '';
+			}
+		}
+		return '';
+	}
+
 	function kcBeeperShowError(msg) {
 		var resultsDiv = document.getElementById('kcBeeperResults');
 		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
@@ -126,12 +201,20 @@
 		resultsDiv.appendChild(err);
 	}
 
-	window.kcBeeperLink = function(chatId) {
+	window.kcBeeperLink = function(chatId, phone) {
 		var username = document.getElementById('kcBeeperUsername').value;
+		var body = 'action=kc_beeper_link&username=' + encodeURIComponent(username) +
+			'&chat_id=' + encodeURIComponent(chatId) +
+			'&_wpnonce=' + config.nonce;
+
+		if (phone) {
+			body += '&phone=' + encodeURIComponent(phone);
+		}
+
 		fetch(config.ajaxUrl, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: 'action=kc_beeper_link&username=' + encodeURIComponent(username) + '&chat_id=' + encodeURIComponent(chatId) + '&_wpnonce=' + config.nonce
+			body: body
 		})
 		.then(function(r) { return r.json(); })
 		.then(function(data) {
@@ -214,6 +297,7 @@
 		if (!client) return;
 
 		var latestDate = null;
+		var chatNetworks = {};
 
 		for (var i = 0; i < chatIds.length; i++) {
 			var chatId = chatIds[i];
@@ -222,23 +306,25 @@
 				latestDate = lastDate;
 			}
 
-			var chatEl = document.querySelector('.kc-beeper-chat[data-chat-id="' + CSS.escape(chatId) + '"]');
-			if (chatEl) {
-				var chatInfo = await client.getChat(chatId);
-				if (chatInfo.success) {
+			var chatInfo = await client.getChat(chatId);
+			if (chatInfo.success) {
+				chatNetworks[chatId] = chatInfo.data.network || 'Beeper';
+			}
+		}
+
+		function updateChatTitles() {
+			for (var chatId in chatNetworks) {
+				var chatEl = document.querySelector('.kc-beeper-chat[data-chat-id="' + CSS.escape(chatId) + '"]');
+				if (chatEl) {
 					var titleEl = chatEl.querySelector('.kc-chat-title');
 					if (titleEl) {
-						var name = getChatName(chatInfo.data);
-						var network = chatInfo.data.network || 'Connected';
-						titleEl.textContent = name;
-						var networkSpan = document.createElement('span');
-						networkSpan.className = 'kc-beeper-chat-network';
-						networkSpan.textContent = ' (' + network + ')';
-						titleEl.parentNode.appendChild(networkSpan);
+						titleEl.textContent = chatNetworks[chatId];
 					}
 				}
 			}
 		}
+
+		updateChatTitles();
 
 		if (latestDate) {
 			await fetch(config.ajaxUrl, {
@@ -262,6 +348,7 @@
 						var newSection = doc.querySelector('.kc-sidebar-section');
 						if (newSection) {
 							existing.replaceWith(newSection);
+							updateChatTitles();
 						}
 					}
 				}

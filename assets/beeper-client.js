@@ -55,7 +55,7 @@ class BeeperClient {
 	}
 
 	async searchChats(query, limit = 10) {
-		const result = await this.request('/search', { params: { query: query } });
+		const result = await this.request('/chats/search', { params: { query: query } });
 
 		if (!result.success) {
 			return result;

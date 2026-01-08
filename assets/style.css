@@ -287,10 +287,38 @@ img.emoji {
 .kc-search-queries {
 	font-size: 0.8em;
 	color: var(--kc-text-muted);
-	margin-bottom: 12px;
-	padding: 8px;
-	background: var(--kc-bg-subtle);
-	border-radius: 4px;
+	margin-bottom: 8px;
+}
+
+.kc-search-form {
+	margin-bottom: 16px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid var(--kc-border-color);
+}
+
+.kc-search-input-wrapper {
+	display: flex;
+	gap: 8px;
+}
+
+.kc-search-input {
+	flex: 1;
+	padding: 8px 12px;
+	font-size: 0.95em;
+	border: 1px solid var(--kc-border-color);
+	border-radius: 6px;
+	background: var(--kc-card-bg);
+	color: var(--kc-text-color);
+}
+
+.kc-search-input:focus {
+	outline: none;
+	border-color: var(--kc-link-color);
+}
+
+.kc-search-btn {
+	padding: 8px 16px;
+	white-space: nowrap;
 }
 
 .kc-results-hint {
