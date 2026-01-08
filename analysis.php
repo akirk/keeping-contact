@@ -190,13 +190,17 @@ $beeper_configured = $beeper->is_configured();
 		ajaxUrl: <?php echo json_encode( admin_url( 'admin-ajax.php' ) ); ?>,
 		nonce: <?php echo json_encode( wp_create_nonce( 'kc_beeper' ) ); ?>,
 		chatIds: <?php echo json_encode( array_values( $chat_ids ) ); ?>,
-		personName: <?php echo json_encode( $person->name ); ?>
+		personName: <?php echo json_encode( $person->name ); ?>,
+		beeperToken: <?php echo json_encode( $beeper->get_token() ); ?>,
+		beeperApiBase: 'http://localhost:23373/v1'
 	};
 	</script>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_script' ) ) {
-		wp_app_enqueue_script( 'kc-analysis', plugin_dir_url( __FILE__ ) . 'assets/analysis.js', [], '1.0', true );
+		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true );
+		wp_app_enqueue_script( 'kc-analysis', plugin_dir_url( __FILE__ ) . 'assets/analysis.js', [ 'kc-beeper-client' ], '1.0', true );
 	} else {
+		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js' ) . '"></script>';
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/analysis.js' ) . '"></script>';
 	}
 	?>

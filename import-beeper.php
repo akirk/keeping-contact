@@ -314,7 +314,7 @@ $chat_to_username = $kc->storage->get_all_beeper_chat_mappings();
 		linkedChats: <?php echo json_encode( $chat_to_username ); ?>,
 		personUrlBase: <?php echo json_encode( home_url( '/crm/person/' ) ); ?>,
 		assignGroupsUrl: <?php echo json_encode( home_url( '/crm/assign-groups' ) ); ?>,
-		beeperToken: <?php echo json_encode( get_option( 'keeping_contact_beeper_token', '' ) ); ?>
+		beeperToken: <?php echo json_encode( $beeper->get_token() ); ?>
 	};
 
 	var selectedIds = new Set();
@@ -626,16 +626,23 @@ $chat_to_username = $kc->storage->get_all_beeper_chat_mappings();
 			}
 
 			var chatIds = JSON.parse(el.dataset.chatIds);
+			var chatIndex = parseInt(chatKey.replace('chat-', ''), 10);
+			var chat = kcConfig.chats[chatIndex];
 			var progress = Math.round(((i + 1) / keys.length) * 100);
 			progressFill.style.width = progress + '%';
 			progressText.textContent = 'Importing ' + (i + 1) + ' of ' + keys.length + '...';
 
 			try {
-				// Send all chat IDs for this person
+				var body = 'action=kc_beeper_import' +
+					'&chat_ids=' + encodeURIComponent(JSON.stringify(chatIds)) +
+					'&name=' + encodeURIComponent(chat.name || '') +
+					'&phone=' + encodeURIComponent(chat.identifier || '') +
+					'&_wpnonce=' + kcConfig.nonce;
+
 				var response = await fetch(kcConfig.ajaxUrl, {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-					body: 'action=kc_beeper_import&chat_ids=' + encodeURIComponent(JSON.stringify(chatIds)) + '&_wpnonce=' + kcConfig.nonce
+					body: body
 				});
 
 				var data = await response.json();

@@ -9,6 +9,14 @@
 	var results = {};
 	var currentSort = { column: 'total', ascending: false };
 	var MESSAGE_LIMIT = 5000;
+	var beeper = null;
+
+	function getBeeperClient() {
+		if (!beeper && config.beeperToken) {
+			beeper = new BeeperClient(config.beeperToken, config.beeperApiBase);
+		}
+		return beeper;
+	}
 
 	function getDateLimit() {
 		var limit = new Date();
@@ -17,29 +25,21 @@
 	}
 
 	async function fetchMessages(chatId, dateLimit) {
+		var client = getBeeperClient();
+		if (!client) return [];
+
 		var allMessages = [];
 		var cursor = null;
 		var hasMore = true;
 
 		while (hasMore) {
-			var body = 'action=kc_beeper_messages&chat_id=' + encodeURIComponent(chatId) + '&_wpnonce=' + config.nonce;
-			if (cursor) {
-				body += '&cursor=' + encodeURIComponent(cursor);
-			}
+			var result = await client.getRecentContext(chatId, 30, cursor);
 
-			var response = await fetch(config.ajaxUrl, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: body
-			});
-
-			var data = await response.json();
-
-			if (!data.success || !data.data.messages) {
+			if (!result.messages || result.messages.length === 0) {
 				break;
 			}
 
-			var messages = data.data.messages;
+			var messages = result.messages;
 			var reachedLimit = false;
 
 			for (var i = 0; i < messages.length; i++) {
@@ -59,8 +59,8 @@
 				allMessages.push(msg);
 			}
 
-			hasMore = !reachedLimit && data.data.has_more;
-			cursor = data.data.next_cursor;
+			hasMore = !reachedLimit && result.has_more;
+			cursor = result.next_cursor;
 
 			if (!cursor) break;
 		}

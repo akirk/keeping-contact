@@ -96,8 +96,9 @@ class KeepingContact {
 					<div id="welcomeBeeperStatus"></div>
 				</form>
 			</div>
+			<script src="<?php echo esc_url( plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js' ); ?>"></script>
 			<script>
-			document.getElementById('welcomeBeeperForm').addEventListener('submit', function(e) {
+			document.getElementById('welcomeBeeperForm').addEventListener('submit', async function(e) {
 				e.preventDefault();
 				var token = document.getElementById('welcome_beeper_token').value;
 				var statusDiv = document.getElementById('welcomeBeeperStatus');
@@ -125,7 +126,17 @@ class KeepingContact {
 					return;
 				}
 
-				showStatus('Connecting...', false, false);
+				showStatus('Testing connection...', false, false);
+
+				var beeper = new BeeperClient(token);
+				var testResult = await beeper.testConnection();
+
+				if (!testResult.success) {
+					showStatus('Connection failed: ' + testResult.error, true, false);
+					return;
+				}
+
+				showStatus('Connected! Saving token...', false, false);
 
 				fetch('<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>', {
 					method: 'POST',
@@ -134,11 +145,11 @@ class KeepingContact {
 				})
 				.then(function(r) { return r.json(); })
 				.then(function(data) {
-					if (data.success && data.data.connected) {
+					if (data.success) {
 						showStatus('Connected! Redirecting to import...', false, true);
 						setTimeout(function() { window.location.href = importUrl; }, 1000);
 					} else {
-						showStatus('Error: ' + (data.data || 'Connection failed'), true, false);
+						showStatus('Error saving token: ' + (data.data || 'Failed'), true, false);
 					}
 				})
 				.catch(function(err) {
@@ -152,18 +163,14 @@ class KeepingContact {
 
 	public static function register_ajax_handlers() {
 		add_action( 'wp_ajax_keeping_contact_log', [ __CLASS__, 'static_ajax_log_contact' ] );
-		add_action( 'wp_ajax_kc_beeper_search', [ __CLASS__, 'static_ajax_beeper_search' ] );
 		add_action( 'wp_ajax_kc_beeper_link', [ __CLASS__, 'static_ajax_beeper_link' ] );
 		add_action( 'wp_ajax_kc_beeper_unlink', [ __CLASS__, 'static_ajax_beeper_unlink' ] );
-		add_action( 'wp_ajax_kc_beeper_sync', [ __CLASS__, 'static_ajax_beeper_sync' ] );
-		add_action( 'wp_ajax_kc_beeper_test', [ __CLASS__, 'static_ajax_beeper_test' ] );
 		add_action( 'wp_ajax_kc_beeper_save_token', [ __CLASS__, 'static_ajax_beeper_save_token' ] );
-		add_action( 'wp_ajax_kc_beeper_send', [ __CLASS__, 'static_ajax_beeper_send' ] );
-		add_action( 'wp_ajax_kc_beeper_messages', [ __CLASS__, 'static_ajax_beeper_messages' ] );
+		add_action( 'wp_ajax_kc_beeper_log_send', [ __CLASS__, 'static_ajax_beeper_log_send' ] );
+		add_action( 'wp_ajax_kc_beeper_update_last_contact', [ __CLASS__, 'static_ajax_beeper_update_last_contact' ] );
 		add_action( 'wp_ajax_kc_render_sidebar', [ __CLASS__, 'static_ajax_render_sidebar' ] );
 		add_action( 'wp_ajax_kc_set_schedule', [ __CLASS__, 'static_ajax_set_schedule' ] );
 		add_action( 'wp_ajax_kc_beeper_import', [ __CLASS__, 'static_ajax_beeper_import' ] );
-		add_action( 'wp_ajax_kc_beeper_load_chats', [ __CLASS__, 'static_ajax_beeper_load_chats' ] );
 	}
 
 	private static function get_beeper() {
@@ -201,64 +208,6 @@ class KeepingContact {
 		}
 	}
 
-	public static function static_ajax_beeper_search() {
-		check_ajax_referer( 'kc_beeper', '_wpnonce' );
-
-		$username = sanitize_text_field( $_POST['username'] ?? '' );
-		$name = sanitize_text_field( $_POST['name'] ?? '' );
-
-		if ( empty( $username ) ) {
-			wp_send_json_error( 'Username required' );
-		}
-
-		$beeper = self::get_beeper();
-		$all_chats = [];
-		$queries_tried = [];
-
-		// First try phone numbers
-		$phone_numbers = self::get_person_phone_numbers( $username );
-		foreach ( $phone_numbers as $phone ) {
-			$queries_tried[] = $phone;
-			$chats = $beeper->search_chats( $phone, 10 );
-			if ( ! is_wp_error( $chats ) && ! empty( $chats['items'] ) ) {
-				foreach ( $chats['items'] as $chat ) {
-					$all_chats[ $chat['id'] ] = $chat;
-				}
-			}
-		}
-
-		// Fall back to name search if no phone results
-		if ( empty( $all_chats ) && ! empty( $name ) ) {
-			$queries_tried[] = $name;
-			$chats = $beeper->search_chats( $name, 10 );
-			if ( ! is_wp_error( $chats ) && ! empty( $chats['items'] ) ) {
-				foreach ( $chats['items'] as $chat ) {
-					$all_chats[ $chat['id'] ] = $chat;
-				}
-			}
-		}
-
-		wp_send_json_success( [
-			'chats' => array_values( $all_chats ),
-			'queries' => $queries_tried,
-		] );
-	}
-
-	private static function get_person_phone_numbers( $username ) {
-		$raw_phones = apply_filters( 'personal_crm_person_phone_numbers', [], $username );
-
-		$phones = [];
-		foreach ( $raw_phones as $raw ) {
-			// Just clean up the number, keep original format
-			$clean = preg_replace( '/[^0-9+]/', '', $raw );
-			if ( ! empty( $clean ) ) {
-				$phones[] = $clean;
-			}
-		}
-
-		return array_unique( $phones );
-	}
-
 	public static function static_ajax_beeper_link() {
 		check_ajax_referer( 'kc_beeper', '_wpnonce' );
 
@@ -271,8 +220,6 @@ class KeepingContact {
 
 		$storage = self::get_storage();
 		$storage->link_beeper_chat( $username, $chat_id );
-
-		self::static_sync_beeper_contact( $username, $chat_id );
 
 		wp_send_json_success( [ 'linked' => true ] );
 	}
@@ -293,62 +240,6 @@ class KeepingContact {
 		wp_send_json_success( [ 'unlinked' => true ] );
 	}
 
-	public static function static_ajax_beeper_sync() {
-		check_ajax_referer( 'kc_beeper', '_wpnonce' );
-
-		$username = sanitize_text_field( $_POST['username'] ?? '' );
-		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
-
-		if ( empty( $username ) || empty( $chat_id ) ) {
-			wp_send_json_error( 'Username and chat_id required' );
-		}
-
-		$result = self::static_sync_beeper_contact( $username, $chat_id );
-
-		if ( $result ) {
-			wp_send_json_success( [ 'synced' => true, 'date' => $result ] );
-		} else {
-			wp_send_json_error( 'No messages found' );
-		}
-	}
-
-	private static function static_sync_beeper_contact( $username, $chat_id ) {
-		$beeper = self::get_beeper();
-		$storage = self::get_storage();
-
-		$last_date = $beeper->get_last_contact_date( $chat_id );
-
-		if ( ! $last_date ) {
-			return false;
-		}
-
-		$contact_date = date( 'Y-m-d', strtotime( $last_date ) );
-
-		$last_contact = $storage->get_last_contact( $username );
-		if ( ! $last_contact || $last_contact['contact_date'] < $contact_date ) {
-			$storage->log_contact( $username, [
-				'contact_type' => 'message',
-				'contact_date' => $contact_date,
-				'notes'        => 'Synced from Beeper',
-			] );
-		}
-
-		return $contact_date;
-	}
-
-	public static function static_ajax_beeper_test() {
-		check_ajax_referer( 'kc_beeper', '_wpnonce' );
-
-		$beeper = self::get_beeper();
-		$result = $beeper->test_connection();
-
-		if ( is_wp_error( $result ) ) {
-			wp_send_json_error( $result->get_error_message() );
-		}
-
-		wp_send_json_success( $result );
-	}
-
 	public static function static_ajax_beeper_save_token() {
 		check_ajax_referer( 'kc_beeper', '_wpnonce' );
 
@@ -361,65 +252,55 @@ class KeepingContact {
 		$beeper->set_token( $token );
 
 		if ( ! empty( $token ) ) {
-			$test = $beeper->test_connection();
-			if ( is_wp_error( $test ) ) {
-				wp_send_json_error( 'Token saved but connection failed: ' . $test->get_error_message() );
-			}
-			wp_send_json_success( [ 'connected' => true, 'accounts' => $test['accounts'] ] );
+			wp_send_json_success( [ 'saved' => true ] );
 		}
 
 		wp_send_json_success( [ 'cleared' => true ] );
 	}
 
-	public static function static_ajax_beeper_send() {
+	public static function static_ajax_beeper_log_send() {
 		check_ajax_referer( 'kc_beeper', '_wpnonce' );
 
-		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
-		$text = sanitize_textarea_field( $_POST['text'] ?? '' );
 		$username = sanitize_text_field( $_POST['username'] ?? '' );
+		$text = sanitize_textarea_field( $_POST['text'] ?? '' );
 
-		if ( empty( $chat_id ) || empty( $text ) ) {
-			wp_send_json_error( 'Chat ID and message text required' );
+		if ( empty( $username ) ) {
+			wp_send_json_error( 'Username required' );
 		}
 
-		$beeper = self::get_beeper();
-		$result = $beeper->send_message( $chat_id, $text );
+		$storage = self::get_storage();
+		$storage->log_contact( $username, [
+			'contact_type' => 'message',
+			'contact_date' => current_time( 'Y-m-d' ),
+			'notes'        => 'Sent via Beeper: ' . wp_trim_words( $text, 20 ),
+		] );
 
-		if ( is_wp_error( $result ) ) {
-			wp_send_json_error( $result->get_error_message() );
+		wp_send_json_success( [ 'logged' => true ] );
+	}
+
+	public static function static_ajax_beeper_update_last_contact() {
+		check_ajax_referer( 'kc_beeper', '_wpnonce' );
+
+		$username = sanitize_text_field( $_POST['username'] ?? '' );
+		$last_date = sanitize_text_field( $_POST['last_date'] ?? '' );
+
+		if ( empty( $username ) || empty( $last_date ) ) {
+			wp_send_json_error( 'Username and last_date required' );
 		}
 
-		// Log the contact
-		if ( ! empty( $username ) ) {
-			$storage = self::get_storage();
+		$contact_date = date( 'Y-m-d', strtotime( $last_date ) );
+		$storage = self::get_storage();
+
+		$last_contact = $storage->get_last_contact( $username );
+		if ( ! $last_contact || $last_contact['contact_date'] < $contact_date ) {
 			$storage->log_contact( $username, [
 				'contact_type' => 'message',
-				'contact_date' => current_time( 'Y-m-d' ),
-				'notes'        => 'Sent via Beeper: ' . wp_trim_words( $text, 20 ),
+				'contact_date' => $contact_date,
+				'notes'        => 'Synced from Beeper',
 			] );
 		}
 
-		wp_send_json_success( [ 'sent' => true ] );
-	}
-
-	public static function static_ajax_beeper_messages() {
-		check_ajax_referer( 'kc_beeper', '_wpnonce' );
-
-		$chat_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
-		$cursor = sanitize_text_field( $_POST['cursor'] ?? '' );
-
-		if ( empty( $chat_id ) ) {
-			wp_send_json_error( 'Chat ID required' );
-		}
-
-		$beeper = self::get_beeper();
-		$result = $beeper->get_recent_context( $chat_id, 30, $cursor ?: null );
-
-		if ( empty( $result['messages'] ) && ! $cursor ) {
-			wp_send_json_error( 'Could not load messages' );
-		}
-
-		wp_send_json_success( $result );
+		wp_send_json_success( [ 'synced' => true, 'date' => $contact_date ] );
 	}
 
 	public static function static_ajax_render_sidebar() {
@@ -472,7 +353,6 @@ class KeepingContact {
 	public static function static_ajax_beeper_import() {
 		check_ajax_referer( 'kc_beeper', '_wpnonce' );
 
-		// Accept either single chat_id or array of chat_ids
 		$chat_ids_json = $_POST['chat_ids'] ?? '';
 		$chat_ids = [];
 
@@ -483,7 +363,6 @@ class KeepingContact {
 			}
 		}
 
-		// Fallback to single chat_id for backwards compatibility
 		if ( empty( $chat_ids ) ) {
 			$single_id = sanitize_text_field( $_POST['chat_id'] ?? '' );
 			if ( ! empty( $single_id ) ) {
@@ -495,37 +374,11 @@ class KeepingContact {
 			wp_send_json_error( 'Chat ID required' );
 		}
 
-		$name_override = sanitize_text_field( $_POST['name'] ?? '' );
-		$beeper = self::get_beeper();
-
-		// Get info from first chat
-		$chat = $beeper->get_chat( $chat_ids[0] );
-
-		if ( is_wp_error( $chat ) ) {
-			wp_send_json_error( 'Failed to get chat info: ' . $chat->get_error_message() );
-		}
-
-		$name = $name_override;
-		$phone = '';
-
-		if ( ! empty( $chat['participants']['items'] ) ) {
-			foreach ( $chat['participants']['items'] as $participant ) {
-				if ( empty( $participant['isSelf'] ) ) {
-					if ( empty( $name ) && ! empty( $participant['fullName'] ) ) {
-						$name = $participant['fullName'];
-					}
-					if ( ! empty( $participant['identifier'] ) ) {
-						$phone = $participant['identifier'];
-					} elseif ( ! empty( $participant['phoneNumber'] ) ) {
-						$phone = $participant['phoneNumber'];
-					}
-					break;
-				}
-			}
-		}
+		$name = sanitize_text_field( $_POST['name'] ?? '' );
+		$phone = sanitize_text_field( $_POST['phone'] ?? '' );
 
 		if ( empty( $name ) ) {
-			$name = $chat['title'] ?? 'Unknown Contact';
+			$name = 'Unknown Contact';
 		}
 
 		$base_username = sanitize_title( $name );
@@ -562,68 +415,14 @@ class KeepingContact {
 
 		$storage = self::get_storage();
 
-		// Link ALL chat IDs to this person
 		foreach ( $chat_ids as $chat_id ) {
 			$storage->link_beeper_chat( $username, sanitize_text_field( $chat_id ) );
 		}
-
-		// Sync from first chat
-		self::static_sync_beeper_contact( $username, $chat_ids[0] );
 
 		wp_send_json_success( [
 			'username' => $username,
 			'name'     => $name,
 			'url'      => home_url( '/crm/person/' . $username ),
-		] );
-	}
-
-	public static function static_ajax_beeper_load_chats() {
-		check_ajax_referer( 'kc_beeper', '_wpnonce' );
-
-		$limit = intval( $_POST['limit'] ?? 100 );
-		$limit = max( 50, min( 1000, $limit ) );
-
-		$beeper = self::get_beeper();
-		$storage = self::get_storage();
-
-		$all_chats_result = $beeper->get_all_chats( $limit );
-		$all_chats = [];
-		$has_more = false;
-
-		if ( ! is_wp_error( $all_chats_result ) ) {
-			$all_chats = $all_chats_result['items'] ?? [];
-			$has_more = count( $all_chats ) >= $limit;
-		}
-
-		$chat_to_username = $storage->get_all_beeper_chat_mappings();
-
-		$chats_for_js = [];
-		foreach ( $all_chats as $chat ) {
-			$name = $chat['title'] ?? 'Unknown';
-			if ( ! empty( $chat['participants']['items'] ) ) {
-				foreach ( $chat['participants']['items'] as $p ) {
-					if ( empty( $p['isSelf'] ) && ! empty( $p['fullName'] ) ) {
-						$name = $p['fullName'];
-						break;
-					}
-				}
-			}
-
-			$linked_username = $chat_to_username[ $chat['id'] ] ?? null;
-
-			$chats_for_js[] = [
-				'id'             => $chat['id'],
-				'name'           => $name,
-				'network'        => $chat['network'] ?? '',
-				'lastActivity'   => $chat['lastActivity'] ?? '',
-				'isLinked'       => $linked_username !== null,
-				'linkedUsername' => $linked_username,
-			];
-		}
-
-		wp_send_json_success( [
-			'chats'   => $chats_for_js,
-			'hasMore' => $has_more,
 		] );
 	}
 
@@ -734,27 +533,10 @@ class KeepingContact {
 
 			<?php if ( $this->beeper->is_configured() ) : ?>
 			<div class="kc-beeper-subsection">
-				<?php foreach ( $chat_ids as $chat_id ) :
-					$chat = $this->beeper->get_chat( $chat_id );
-					$network = is_wp_error( $chat ) ? 'Unknown' : ( $chat['network'] ?? 'Connected' );
-					$title = $chat_id;
-					if ( ! is_wp_error( $chat ) ) {
-						$participants = $chat['participants']['items'] ?? [];
-						foreach ( $participants as $p ) {
-							if ( empty( $p['isSelf'] ) && ! empty( $p['fullName'] ) ) {
-								$title = $p['fullName'];
-								break;
-							}
-						}
-						if ( $title === $chat_id ) {
-							$title = $chat['title'] ?? $chat['name'] ?? $network;
-						}
-					}
-				?>
-					<div class="kc-beeper-chat">
+				<?php foreach ( $chat_ids as $chat_id ) : ?>
+					<div class="kc-beeper-chat" data-chat-id="<?php echo esc_attr( $chat_id ); ?>">
 						<a href="<?php echo esc_url( $this->crm->build_url( 'conversations', [ 'person' => $person->username ] ) ); ?>" class="kc-beeper-chat-info">
-							💬 <?php echo esc_html( $title ); ?>
-							<span class="kc-beeper-chat-network">(<?php echo esc_html( $network ); ?>)</span>
+							💬 <span class="kc-chat-title">Beeper Chat</span>
 						</a>
 						<button type="button" class="btn-sm btn-danger" onclick="kcBeeperUnlink('<?php echo esc_js( $person->username ); ?>', '<?php echo esc_js( $chat_id ); ?>')" title="Disconnect chat">×</button>
 					</div>
@@ -1165,13 +947,17 @@ class KeepingContact {
 		<script>
 		window.kcBeeperConfig = {
 			ajaxUrl: '<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>',
-			nonce: '<?php echo wp_create_nonce( 'kc_beeper' ); ?>'
+			nonce: '<?php echo wp_create_nonce( 'kc_beeper' ); ?>',
+			beeperToken: <?php echo wp_json_encode( $this->beeper->get_token() ); ?>,
+			beeperApiBase: 'http://localhost:23373/v1'
 		};
 		</script>
 		<?php
 		if ( function_exists( 'wp_app_enqueue_script' ) ) {
-			wp_app_enqueue_script( 'kc-beeper', plugin_dir_url( __DIR__ ) . 'assets/beeper.js', [], '1.0', true );
+			wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js', [], '1.0', true );
+			wp_app_enqueue_script( 'kc-beeper', plugin_dir_url( __DIR__ ) . 'assets/beeper.js', [ 'kc-beeper-client' ], '1.0', true );
 		} else {
+			echo '<script src="' . esc_url( plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js' ) . '"></script>';
 			echo '<script src="' . esc_url( plugin_dir_url( __DIR__ ) . 'assets/beeper.js' ) . '"></script>';
 		}
 	}

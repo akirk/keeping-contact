@@ -5,37 +5,45 @@
 (function() {
 	'use strict';
 
-	// Config is set by inline PHP
 	var config = window.kcBeeperConfig || {};
+	var beeper = null;
 
-	window.kcBeeperSearch = function(username, name) {
+	function getBeeperClient() {
+		if (!beeper && config.beeperToken) {
+			beeper = new BeeperClient(config.beeperToken, config.beeperApiBase);
+		}
+		return beeper;
+	}
+
+	window.kcBeeperSearch = async function(username, name) {
 		document.getElementById('kcBeeperUsername').value = username;
 		document.getElementById('kcBeeperModal').style.display = 'flex';
 		document.getElementById('kcBeeperSearching').style.display = 'block';
 		var resultsDiv = document.getElementById('kcBeeperResults');
 		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
 
-		fetch(config.ajaxUrl, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: 'action=kc_beeper_search&name=' + encodeURIComponent(name) + '&username=' + encodeURIComponent(username) + '&_wpnonce=' + config.nonce
-		})
-		.then(function(r) { return r.json(); })
-		.then(function(data) {
+		var client = getBeeperClient();
+		if (!client) {
 			document.getElementById('kcBeeperSearching').style.display = 'none';
-			kcBeeperRenderResults(data, name);
-		})
-		.catch(function(err) {
-			document.getElementById('kcBeeperSearching').style.display = 'none';
-			kcBeeperShowError(err.message);
-		});
+			kcBeeperShowError('Beeper not configured');
+			return;
+		}
+
+		var result = await client.searchChats(name, 10);
+
+		document.getElementById('kcBeeperSearching').style.display = 'none';
+
+		if (result.success) {
+			kcBeeperRenderResults({ success: true, data: { chats: result.data.items, queries: [name] } }, name);
+		} else {
+			kcBeeperShowError(result.error || 'Search failed');
+		}
 	};
 
 	function kcBeeperRenderResults(data, name) {
 		var resultsDiv = document.getElementById('kcBeeperResults');
 		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
 
-		// Show what queries were tried
 		if (data.data && data.data.queries && data.data.queries.length > 0) {
 			var queriesDiv = document.createElement('div');
 			queriesDiv.className = 'kc-search-queries';
@@ -44,23 +52,15 @@
 		}
 
 		if (data.success && data.data.chats && data.data.chats.length > 0) {
-			// Auto-connect if there's exactly one result
 			if (data.data.chats.length === 1) {
 				var chat = data.data.chats[0];
-				var chatName = chat.title || 'Unknown';
-				if (chat.participants && chat.participants.items) {
-					var other = chat.participants.items.find(function(p) { return !p.isSelf; });
-					if (other && other.fullName) {
-						chatName = other.fullName;
-					}
-				}
+				var chatName = getChatName(chat);
 
 				var autoConnectDiv = document.createElement('div');
 				autoConnectDiv.className = 'kc-auto-connect';
 				autoConnectDiv.textContent = 'Found 1 match: ' + chatName + '. Connecting...';
 				resultsDiv.appendChild(autoConnectDiv);
 
-				// Auto-link after a short delay so user sees the message
 				setTimeout(function() {
 					kcBeeperLink(chat.id);
 				}, 500);
@@ -77,14 +77,7 @@
 				item.className = 'kc-chat-result';
 				item.onclick = function() { kcBeeperLink(chat.id); };
 
-				// Get participant name (not self) for single chats
-				var chatName = chat.title || 'Unknown';
-				if (chat.participants && chat.participants.items) {
-					var other = chat.participants.items.find(function(p) { return !p.isSelf; });
-					if (other && other.fullName) {
-						chatName = other.fullName;
-					}
-				}
+				var chatName = getChatName(chat);
 
 				var info = document.createElement('div');
 				var title = document.createElement('strong');
@@ -113,6 +106,17 @@
 		}
 	}
 
+	function getChatName(chat) {
+		var chatName = chat.title || 'Unknown';
+		if (chat.participants && chat.participants.items) {
+			var other = chat.participants.items.find(function(p) { return !p.isSelf; });
+			if (other && other.fullName) {
+				chatName = other.fullName;
+			}
+		}
+		return chatName;
+	}
+
 	function kcBeeperShowError(msg) {
 		var resultsDiv = document.getElementById('kcBeeperResults');
 		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
@@ -132,18 +136,45 @@
 		.then(function(r) { return r.json(); })
 		.then(function(data) {
 			if (data.success) {
-				location.reload();
+				kcBeeperSyncAfterLink(username, chatId);
 			} else {
 				alert('Error: ' + (data.data || 'Failed to link'));
 			}
 		});
 	};
 
-	window.kcBeeperSync = function(username, chatId) {
+	async function kcBeeperSyncAfterLink(username, chatId) {
+		var client = getBeeperClient();
+		if (client) {
+			var lastDate = await client.getLastContactDate(chatId);
+			if (lastDate) {
+				await fetch(config.ajaxUrl, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+					body: 'action=kc_beeper_update_last_contact&username=' + encodeURIComponent(username) + '&last_date=' + encodeURIComponent(lastDate) + '&_wpnonce=' + config.nonce
+				});
+			}
+		}
+		location.reload();
+	}
+
+	window.kcBeeperSync = async function(username, chatId) {
+		var client = getBeeperClient();
+		if (!client) {
+			alert('Beeper not configured');
+			return;
+		}
+
+		var lastDate = await client.getLastContactDate(chatId);
+		if (!lastDate) {
+			alert('No messages found');
+			return;
+		}
+
 		fetch(config.ajaxUrl, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: 'action=kc_beeper_sync&username=' + encodeURIComponent(username) + '&chat_id=' + encodeURIComponent(chatId) + '&_wpnonce=' + config.nonce
+			body: 'action=kc_beeper_update_last_contact&username=' + encodeURIComponent(username) + '&last_date=' + encodeURIComponent(lastDate) + '&_wpnonce=' + config.nonce
 		})
 		.then(function(r) { return r.json(); })
 		.then(function(data) {
@@ -176,41 +207,68 @@
 		document.getElementById('kcBeeperModal').style.display = 'none';
 	};
 
-	window.kcBeeperAutoSync = function(username, chatIds) {
+	window.kcBeeperAutoSync = async function(username, chatIds) {
 		if (!chatIds || chatIds.length === 0) return;
 
-		var syncPromises = chatIds.map(function(chatId) {
-			return fetch(config.ajaxUrl, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: 'action=kc_beeper_sync&username=' + encodeURIComponent(username) + '&chat_id=' + encodeURIComponent(chatId) + '&_wpnonce=' + config.nonce
-			});
-		});
+		var client = getBeeperClient();
+		if (!client) return;
 
-		Promise.all(syncPromises).then(function() {
-			return fetch(config.ajaxUrl, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: 'action=kc_render_sidebar&username=' + encodeURIComponent(username) + '&_wpnonce=' + config.nonce
-			});
-		}).then(function(r) {
-			return r.json();
-		}).then(function(data) {
-			if (data.success && data.data.html) {
-				var existing = document.querySelector('.kc-sidebar-section');
-				if (existing) {
-					var parser = new DOMParser();
-					var doc = parser.parseFromString(data.data.html, 'text/html');
-					var newSection = doc.querySelector('.kc-sidebar-section');
-					if (newSection) {
-						existing.replaceWith(newSection);
+		var latestDate = null;
+
+		for (var i = 0; i < chatIds.length; i++) {
+			var chatId = chatIds[i];
+			var lastDate = await client.getLastContactDate(chatId);
+			if (lastDate && (!latestDate || lastDate > latestDate)) {
+				latestDate = lastDate;
+			}
+
+			var chatEl = document.querySelector('.kc-beeper-chat[data-chat-id="' + CSS.escape(chatId) + '"]');
+			if (chatEl) {
+				var chatInfo = await client.getChat(chatId);
+				if (chatInfo.success) {
+					var titleEl = chatEl.querySelector('.kc-chat-title');
+					if (titleEl) {
+						var name = getChatName(chatInfo.data);
+						var network = chatInfo.data.network || 'Connected';
+						titleEl.textContent = name;
+						var networkSpan = document.createElement('span');
+						networkSpan.className = 'kc-beeper-chat-network';
+						networkSpan.textContent = ' (' + network + ')';
+						titleEl.parentNode.appendChild(networkSpan);
 					}
 				}
 			}
-		});
+		}
+
+		if (latestDate) {
+			await fetch(config.ajaxUrl, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: 'action=kc_beeper_update_last_contact&username=' + encodeURIComponent(username) + '&last_date=' + encodeURIComponent(latestDate) + '&_wpnonce=' + config.nonce
+			});
+
+			fetch(config.ajaxUrl, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: 'action=kc_render_sidebar&username=' + encodeURIComponent(username) + '&_wpnonce=' + config.nonce
+			}).then(function(r) {
+				return r.json();
+			}).then(function(data) {
+				if (data.success && data.data.html) {
+					var existing = document.querySelector('.kc-sidebar-section');
+					if (existing) {
+						var parser = new DOMParser();
+						var doc = parser.parseFromString(data.data.html, 'text/html');
+						var newSection = doc.querySelector('.kc-sidebar-section');
+						if (newSection) {
+							existing.replaceWith(newSection);
+						}
+					}
+				}
+			});
+		}
 	};
 
-	// Close modal when clicking outside
 	document.addEventListener('DOMContentLoaded', function() {
 		var modal = document.getElementById('kcBeeperModal');
 		if (modal) {

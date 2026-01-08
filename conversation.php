@@ -43,13 +43,9 @@ $stats = $kc_storage->get_contact_stats( $username );
 // Get linked Beeper chats
 $chat_ids = $kc_storage->get_beeper_chats( $username );
 
-// Get recent conversation context from first linked chat
-$recent_messages = [];
+// Get linked Beeper chat for JS to load messages
 $active_chat = null;
-$user_message_samples = [];
 $beeper_error = null;
-$has_more_messages = false;
-$next_cursor = null;
 
 if ( ! $beeper->is_configured() ) {
 	$beeper_error = 'Beeper API token not configured. Add it in Settings.';
@@ -57,39 +53,10 @@ if ( ! $beeper->is_configured() ) {
 	$beeper_error = 'No Beeper chats linked to this person.';
 } else {
 	$active_chat = $chat_ids[0];
-	$cursor = isset( $_GET['cursor'] ) ? sanitize_text_field( $_GET['cursor'] ) : null;
-
-	// Fetch messages with cursor-based pagination
-	$context_result = $beeper->get_recent_context( $active_chat, 30, $cursor );
-	$recent_messages = $context_result['messages'];
-	$has_more_messages = $context_result['has_more'];
-	$next_cursor = $context_result['next_cursor'];
-
-	if ( ! empty( $context_result['error'] ) ) {
-		$beeper_error = $context_result['error'];
-	} elseif ( empty( $recent_messages ) && ! $cursor ) {
-		$beeper_error = 'No messages found in this chat.';
-	} else {
-		// Get more messages for style analysis (user's own messages)
-		$style_result = $beeper->get_recent_context( $active_chat, 50 );
-		foreach ( $style_result['messages'] as $msg ) {
-			if ( $msg['is_sender'] && ! empty( $msg['text'] ) && $msg['text'] !== '[attachment]' && $msg['text'] !== '[link]' ) {
-				$user_message_samples[] = $msg['text'];
-			}
-		}
-	}
 }
 
-// Calculate days since last message
-$days_since_last_message = null;
-if ( ! empty( $recent_messages ) ) {
-	$last_msg_date = end( $recent_messages )['date'];
-	if ( $last_msg_date ) {
-		$last_date = new \DateTime( $last_msg_date );
-		$today = new \DateTime();
-		$days_since_last_message = $today->diff( $last_date )->days;
-	}
-}
+// Days since last contact from schedule stats
+$days_since_last_message = $stats['days_since_contact'] ?? null;
 
 // Get upcoming events for this person (birthdays, anniversaries, etc.)
 $upcoming_events = $person->get_upcoming_events();
@@ -205,13 +172,13 @@ $local_base_url = LocalLLM::get_base_url();
 
 			<div class="draft-main">
 				<?php if ( $beeper_error ) : ?>
-					<div class="beeper-error-notice">
+					<div class="beeper-error-notice" id="beeperError">
 						<strong>Beeper:</strong> <?php echo esc_html( $beeper_error ); ?>
 					</div>
 				<?php endif; ?>
 
-				<?php if ( ! empty( $user_message_samples ) ) : ?>
-					<div class="style-examples-section ai-assistant-section">
+				<?php if ( $active_chat ) : ?>
+					<div class="style-examples-section ai-assistant-section" id="styleExamplesSection" style="display: none;">
 						<div class="style-examples-header">
 							<h4>My Writing Style</h4>
 							<div class="context-controls">
@@ -221,40 +188,10 @@ $local_base_url = LocalLLM::get_base_url();
 							</div>
 						</div>
 						<p class="context-hint">Select messages that represent your typical writing style</p>
-						<div class="style-examples-list">
-							<?php foreach ( $user_message_samples as $idx => $sample ) : ?>
-								<div class="style-example" data-idx="<?php echo $idx; ?>" data-selected="true">
-									<?php echo esc_html( $sample ); ?>
-								</div>
-							<?php endforeach; ?>
-						</div>
+						<div class="style-examples-list" id="styleExamplesList"></div>
 					</div>
-				<?php endif; ?>
 
-				<?php if ( ! empty( $recent_messages ) ) :
-					// Group messages into conversations based on time gaps (4+ hours = new conversation)
-					$conversations = [];
-					$current_group = [];
-					$last_time = null;
-					$gap_threshold = 4 * 60 * 60; // 4 hours in seconds
-
-					foreach ( $recent_messages as $idx => $msg ) {
-						$msg_time = strtotime( $msg['date'] );
-						if ( $last_time !== null && ( $msg_time - $last_time ) > $gap_threshold ) {
-							if ( ! empty( $current_group ) ) {
-								$conversations[] = $current_group;
-							}
-							$current_group = [];
-						}
-						$msg['_idx'] = $idx;
-						$current_group[] = $msg;
-						$last_time = $msg_time;
-					}
-					if ( ! empty( $current_group ) ) {
-						$conversations[] = $current_group;
-					}
-				?>
-					<div class="conversation-context">
+					<div class="conversation-context" id="conversationContextSection" style="display: none;">
 						<div class="conversation-context-header ai-assistant-section">
 							<div>
 								<h4>Conversation Context</h4>
@@ -267,41 +204,14 @@ $local_base_url = LocalLLM::get_base_url();
 							</div>
 						</div>
 						<div class="conversation-groups-scroll">
-							<?php if ( $has_more_messages && $next_cursor ) : ?>
-								<div class="load-more-container" id="loadMoreContainer">
-									<button type="button" class="btn-load-more" id="loadMoreBtn" data-cursor="<?php echo esc_attr( $next_cursor ); ?>" data-chat="<?php echo esc_attr( $active_chat ); ?>">Load older messages</button>
-								</div>
-							<?php endif; ?>
-							<div class="conversation-groups" id="conversationGroups">
-								<?php foreach ( $conversations as $group_idx => $group ) :
-									$first_date = date( 'M j', strtotime( $group[0]['date'] ) );
-									$indices = array_map( function( $m ) { return $m['_idx']; }, $group );
-								?>
-									<div class="conversation-group" data-indices="<?php echo esc_attr( implode( ',', $indices ) ); ?>" data-selected="true">
-										<div class="conversation-group-header">
-											<span class="conversation-group-date"><?php echo esc_html( $first_date ); ?></span>
-											<span class="conversation-group-count"><?php echo count( $group ); ?> messages</span>
-										</div>
-										<div class="message-list">
-											<?php foreach ( $group as $msg ) : ?>
-												<div class="message-item <?php echo $msg['is_sender'] ? 'sent' : 'received'; ?>">
-													<div class="message-meta">
-														<span class="message-sender"><?php echo esc_html( $msg['sender'] ); ?></span>
-														<span class="message-date"><?php echo esc_html( date( 'g:i a', strtotime( $msg['date'] ) ) ); ?></span>
-													</div>
-													<div class="message-text"><?php echo esc_html( $msg['text'] ); ?></div>
-												</div>
-											<?php endforeach; ?>
-										</div>
-										<div class="conversation-group-footer">
-											<button type="button" class="btn-toggle-group" title="Toggle inclusion">✓</button>
-											<span class="toggle-label">Included</span>
-										</div>
-									</div>
-								<?php endforeach; ?>
+							<div class="load-more-container" id="loadMoreContainer" style="display: none;">
+								<button type="button" class="btn-load-more" id="loadMoreBtn" data-chat="<?php echo esc_attr( $active_chat ); ?>">Load older messages</button>
 							</div>
+							<div class="conversation-groups" id="conversationGroups"></div>
 						</div>
 					</div>
+
+					<div class="loading-messages" id="loadingMessages">Loading messages...</div>
 				<?php endif; ?>
 
 				<div class="ai-draft-section ai-assistant-section">
@@ -384,27 +294,26 @@ $local_base_url = LocalLLM::get_base_url();
 		personName: <?php echo json_encode( $person->name ); ?>,
 		personFirstName: <?php echo json_encode( explode( ' ', $person->name )[0] ); ?>,
 		personUsername: <?php echo json_encode( $username ); ?>,
-		conversationContext: <?php echo json_encode( array_map( function( $msg ) {
-			return [
-				'sender' => $msg['is_sender'] ? 'Me' : 'Them',
-				'text'   => $msg['text'],
-			];
-		}, $recent_messages ) ); ?>,
-		userMessageSamples: <?php echo json_encode( array_slice( $user_message_samples, 0, 15 ) ); ?>,
+		conversationContext: [],
+		userMessageSamples: [],
 		eventsContext: <?php echo json_encode( $events_context ); ?>,
 		scheduleNotes: <?php echo json_encode( $schedule['notes'] ?? '' ); ?>,
 		daysSinceContact: <?php echo json_encode( $days_since_last_message ); ?>,
 		ajaxUrl: <?php echo json_encode( admin_url( 'admin-ajax.php' ) ); ?>,
 		nonce: <?php echo json_encode( wp_create_nonce( 'kc_beeper' ) ); ?>,
-		activeChatId: <?php echo json_encode( $active_chat ); ?>
+		activeChatId: <?php echo json_encode( $active_chat ); ?>,
+		beeperToken: <?php echo json_encode( $beeper->get_token() ); ?>,
+		beeperApiBase: 'http://localhost:23373/v1'
 	};
 	</script>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_script' ) ) {
 		wp_app_enqueue_script( 'personal-crm-local-llm', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/local-llm.js', [], '1.0', true );
-		wp_app_enqueue_script( 'kc-conversation', plugin_dir_url( __FILE__ ) . 'assets/conversation.js', [ 'personal-crm-local-llm' ], '1.0', true );
+		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true );
+		wp_app_enqueue_script( 'kc-conversation', plugin_dir_url( __FILE__ ) . 'assets/conversation.js', [ 'personal-crm-local-llm', 'kc-beeper-client' ], '1.0', true );
 	} else {
 		echo '<script src="' . esc_url( plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/local-llm.js' ) . '"></script>';
+		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js' ) . '"></script>';
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/conversation.js' ) . '"></script>';
 	}
 	?>

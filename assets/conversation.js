@@ -5,10 +5,21 @@
 (function() {
 	'use strict';
 
-	// Config is set by inline PHP via window.kcDraftConfig
 	var config = window.kcDraftConfig || {};
+	var beeper = null;
+	var nextCursor = null;
 
-	// Style examples - persisted in localStorage
+	function getBeeperClient() {
+		if (!beeper && config.beeperToken) {
+			beeper = new BeeperClient(config.beeperToken, config.beeperApiBase);
+		}
+		return beeper;
+	}
+
+	function clearElement(el) {
+		while (el.firstChild) el.removeChild(el.firstChild);
+	}
+
 	var styleStorageKey = 'kc_style_examples_' + config.personUsername;
 
 	window.loadStyleExampleSelections = function() {
@@ -62,7 +73,6 @@
 		return selected;
 	}
 
-	// Conversation context functions
 	window.toggleAllContext = function(selected) {
 		document.querySelectorAll('.conversation-group').forEach(function(group) {
 			group.dataset.selected = selected;
@@ -107,86 +117,173 @@
 		return selected;
 	}
 
-	// Load more messages
+	async function loadInitialMessages() {
+		var client = getBeeperClient();
+		if (!client || !config.activeChatId) {
+			var loadingEl = document.getElementById('loadingMessages');
+			if (loadingEl) loadingEl.style.display = 'none';
+			return;
+		}
+
+		var result = await client.getRecentContext(config.activeChatId, 30);
+
+		var loadingEl = document.getElementById('loadingMessages');
+		if (loadingEl) loadingEl.style.display = 'none';
+
+		if (!result.messages || result.messages.length === 0) {
+			var errorEl = document.getElementById('beeperError');
+			if (!errorEl) {
+				errorEl = document.createElement('div');
+				errorEl.className = 'beeper-error-notice';
+				errorEl.id = 'beeperError';
+				var main = document.querySelector('.draft-main');
+				if (main) main.insertBefore(errorEl, main.firstChild);
+			}
+			var strong = document.createElement('strong');
+			strong.textContent = 'Beeper:';
+			clearElement(errorEl);
+			errorEl.appendChild(strong);
+			errorEl.appendChild(document.createTextNode(' ' + (result.error || 'No messages found in this chat.')));
+			return;
+		}
+
+		config.conversationContext = result.messages.map(function(msg) {
+			return { sender: msg.is_sender ? 'Me' : 'Them', text: msg.text };
+		});
+
+		var userSamples = [];
+		result.messages.forEach(function(msg) {
+			if (msg.is_sender && msg.text && msg.text !== '[attachment]' && msg.text !== '[link]') {
+				userSamples.push(msg.text);
+			}
+		});
+		config.userMessageSamples = userSamples.slice(0, 15);
+
+		renderStyleExamples();
+		renderConversationGroups(result.messages);
+
+		nextCursor = result.next_cursor;
+		if (result.has_more && nextCursor) {
+			var loadMoreContainer = document.getElementById('loadMoreContainer');
+			var loadMoreBtn = document.getElementById('loadMoreBtn');
+			if (loadMoreContainer && loadMoreBtn) {
+				loadMoreBtn.dataset.cursor = nextCursor;
+				loadMoreContainer.style.display = '';
+			}
+		}
+
+		document.getElementById('styleExamplesSection').style.display = '';
+		document.getElementById('conversationContextSection').style.display = '';
+	}
+
+	function renderStyleExamples() {
+		var list = document.getElementById('styleExamplesList');
+		if (!list) return;
+
+		clearElement(list);
+		config.userMessageSamples.forEach(function(sample, idx) {
+			var div = document.createElement('div');
+			div.className = 'style-example';
+			div.dataset.idx = idx;
+			div.dataset.selected = 'true';
+			div.textContent = sample;
+			div.addEventListener('click', function() {
+				var isSelected = this.dataset.selected === 'true';
+				this.dataset.selected = !isSelected;
+				saveStyleExampleSelections();
+				updateStyleCount();
+			});
+			list.appendChild(div);
+		});
+
+		loadStyleExampleSelections();
+		updateStyleCount();
+	}
+
+	function renderConversationGroups(messages) {
+		var groups = groupMessagesByTime(messages);
+		var container = document.getElementById('conversationGroups');
+		if (!container) return;
+
+		clearElement(container);
+		var currentIdx = 0;
+
+		groups.forEach(function(group) {
+			var groupEl = createConversationGroupElement(group, currentIdx);
+			container.appendChild(groupEl);
+			currentIdx += group.length;
+		});
+
+		updateConversationCount();
+
+		var scrollContainer = document.querySelector('.conversation-groups-scroll');
+		if (scrollContainer) {
+			scrollContainer.scrollTop = scrollContainer.scrollHeight;
+		}
+	}
+
 	window.loadMoreMessages = async function() {
 		var btn = document.getElementById('loadMoreBtn');
 		var cursor = btn.dataset.cursor;
-		var chatId = btn.dataset.chat;
+		var chatId = btn.dataset.chat || config.activeChatId;
 
 		btn.disabled = true;
 		btn.textContent = 'Loading...';
 
-		try {
-			var response = await fetch(config.ajaxUrl, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-				body: 'action=kc_beeper_messages&chat_id=' + encodeURIComponent(chatId) + '&cursor=' + encodeURIComponent(cursor) + '&_wpnonce=' + config.nonce
-			});
+		var client = getBeeperClient();
+		if (!client) {
+			btn.textContent = 'Error: Not configured';
+			return;
+		}
 
-			var data = await response.json();
+		var result = await client.getRecentContext(chatId, 30, cursor);
 
-			if (data.success && data.data.messages) {
-				var messages = data.data.messages;
-				var groups = groupMessagesByTime(messages);
-				var container = document.getElementById('conversationGroups');
-				var newMsgCount = messages.length;
-
-				// Shift existing group indices to make room for new messages at the beginning
-				document.querySelectorAll('.conversation-group').forEach(function(group) {
-					var oldIndices = group.dataset.indices.split(',').map(function(i) { return parseInt(i, 10); });
-					var newIndices = oldIndices.map(function(i) { return i + newMsgCount; });
-					group.dataset.indices = newIndices.join(',');
-				});
-
-				// Prepend new messages to conversationContext array
-				var newContextMessages = messages.map(function(msg) {
-					return {
-						sender: msg.is_sender ? 'Me' : 'Them',
-						text: msg.text
-					};
-				});
-				config.conversationContext.unshift.apply(config.conversationContext, newContextMessages);
-
-				// Measure scroll position before inserting
-				var scrollContainer = document.querySelector('.conversation-groups-scroll');
-				var oldScrollHeight = scrollContainer.scrollHeight;
-
-				// Create HTML for new groups (indices start at 0 since we prepended)
-				var currentIdx = 0;
-				groups.forEach(function(group) {
-					var groupEl = createConversationGroupElement(group, currentIdx);
-					container.insertBefore(groupEl, container.firstChild);
-					currentIdx += group.length;
-				});
-
-				// Restore scroll position so user stays in the same place
-				var newScrollHeight = scrollContainer.scrollHeight;
-				scrollContainer.scrollTop += (newScrollHeight - oldScrollHeight);
-
-				// Update count
-				updateConversationCount();
-
-				// Update cursor or hide button
-				if (data.data.has_more && data.data.next_cursor) {
-					btn.dataset.cursor = data.data.next_cursor;
-					btn.disabled = false;
-					btn.textContent = 'Load older messages';
-				} else {
-					document.getElementById('loadMoreContainer').style.display = 'none';
-				}
-			} else {
-				btn.textContent = 'Failed to load';
-				setTimeout(function() {
-					btn.disabled = false;
-					btn.textContent = 'Load older messages';
-				}, 2000);
-			}
-		} catch (error) {
-			btn.textContent = 'Error loading';
+		if (!result.messages || result.messages.length === 0) {
+			btn.textContent = 'No more messages';
 			setTimeout(function() {
 				btn.disabled = false;
 				btn.textContent = 'Load older messages';
 			}, 2000);
+			return;
+		}
+
+		var messages = result.messages;
+		var groups = groupMessagesByTime(messages);
+		var container = document.getElementById('conversationGroups');
+		var newMsgCount = messages.length;
+
+		document.querySelectorAll('.conversation-group').forEach(function(group) {
+			var oldIndices = group.dataset.indices.split(',').map(function(i) { return parseInt(i, 10); });
+			var newIndices = oldIndices.map(function(i) { return i + newMsgCount; });
+			group.dataset.indices = newIndices.join(',');
+		});
+
+		var newContextMessages = messages.map(function(msg) {
+			return { sender: msg.is_sender ? 'Me' : 'Them', text: msg.text };
+		});
+		config.conversationContext.unshift.apply(config.conversationContext, newContextMessages);
+
+		var scrollContainer = document.querySelector('.conversation-groups-scroll');
+		var oldScrollHeight = scrollContainer.scrollHeight;
+
+		var currentIdx = 0;
+		groups.forEach(function(group) {
+			var groupEl = createConversationGroupElement(group, currentIdx);
+			container.insertBefore(groupEl, container.firstChild);
+			currentIdx += group.length;
+		});
+
+		var newScrollHeight = scrollContainer.scrollHeight;
+		scrollContainer.scrollTop += (newScrollHeight - oldScrollHeight);
+
+		updateConversationCount();
+
+		if (result.has_more && result.next_cursor) {
+			btn.dataset.cursor = result.next_cursor;
+			btn.disabled = false;
+			btn.textContent = 'Load older messages';
+		} else {
+			document.getElementById('loadMoreContainer').style.display = 'none';
 		}
 	};
 
@@ -194,7 +291,7 @@
 		var groups = [];
 		var currentGroup = [];
 		var lastTime = null;
-		var gapThreshold = 4 * 60 * 60 * 1000; // 4 hours in ms
+		var gapThreshold = 4 * 60 * 60 * 1000;
 
 		messages.forEach(function(msg) {
 			var msgTime = new Date(msg.date).getTime();
@@ -226,7 +323,6 @@
 		var firstDate = new Date(group[0].date);
 		var dateStr = firstDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-		// Build header
 		var header = document.createElement('div');
 		header.className = 'conversation-group-header';
 
@@ -242,7 +338,6 @@
 		header.appendChild(countSpan);
 		div.appendChild(header);
 
-		// Build message list
 		var messageList = document.createElement('div');
 		messageList.className = 'message-list';
 
@@ -275,7 +370,6 @@
 
 		div.appendChild(messageList);
 
-		// Build footer with toggle
 		var footer = document.createElement('div');
 		footer.className = 'conversation-group-footer';
 
@@ -293,7 +387,6 @@
 		footer.appendChild(toggleLabel);
 		div.appendChild(footer);
 
-		// Add click handler for toggle button
 		toggleBtn.addEventListener('click', function(e) {
 			e.stopPropagation();
 			var isSelected = div.dataset.selected === 'true';
@@ -306,7 +399,6 @@
 		return div;
 	}
 
-	// Draft generation
 	var draftCounter = 0;
 
 	window.loadLocalModels = async function() {
@@ -392,7 +484,6 @@
 		var content = document.createElement('div');
 		content.className = 'ai-draft-card-content';
 
-		// Prompt details
 		var details = document.createElement('details');
 		details.className = 'ai-draft-prompt-details';
 
@@ -574,7 +665,7 @@
 		setTimeout(function() { btn.textContent = originalText; }, 2000);
 	};
 
-	window.sendViaBeeper = function() {
+	window.sendViaBeeper = async function() {
 		var text = document.getElementById('draftMessage').value.trim();
 		if (!text) {
 			alert('Please write a message first');
@@ -585,27 +676,30 @@
 			return;
 		}
 
+		var client = getBeeperClient();
+		if (!client) {
+			alert('Beeper not configured');
+			return;
+		}
+
+		var result = await client.sendMessage(config.activeChatId, text);
+
+		if (!result.success) {
+			alert('Error: ' + (result.error || 'Failed to send'));
+			return;
+		}
+
 		fetch(config.ajaxUrl, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: 'action=kc_beeper_send&chat_id=' + encodeURIComponent(config.activeChatId) + '&text=' + encodeURIComponent(text) + '&username=' + encodeURIComponent(config.personUsername) + '&_wpnonce=' + config.nonce
-		})
-		.then(function(r) { return r.json(); })
-		.then(function(data) {
-			if (data.success) {
-				document.getElementById('draftMessage').value = '';
-				alert('Message sent!');
-				location.reload();
-			} else {
-				alert('Error: ' + (data.data || 'Failed to send'));
-			}
-		})
-		.catch(function(err) {
-			alert('Error: ' + err.message);
+			body: 'action=kc_beeper_log_send&username=' + encodeURIComponent(config.personUsername) + '&text=' + encodeURIComponent(text) + '&_wpnonce=' + config.nonce
 		});
+
+		document.getElementById('draftMessage').value = '';
+		alert('Message sent!');
+		location.reload();
 	};
 
-	// AI Assistant toggle
 	window.toggleAiAssistant = function() {
 		var main = document.querySelector('.draft-main');
 		if (main) {
@@ -613,57 +707,14 @@
 		}
 	};
 
-	// Initialize on DOM ready
 	document.addEventListener('DOMContentLoaded', function() {
-		// Style example click handlers
-		document.querySelectorAll('.style-example').forEach(function(el) {
-			el.addEventListener('click', function() {
-				var isSelected = this.dataset.selected === 'true';
-				this.dataset.selected = !isSelected;
-				saveStyleExampleSelections();
-				updateStyleCount();
-			});
-		});
-
-		// Load saved selections
-		loadStyleExampleSelections();
-		updateStyleCount();
-
-		// Scroll conversation list to bottom
-		var conversationScroll = document.querySelector('.conversation-groups-scroll');
-		if (conversationScroll) {
-			conversationScroll.scrollTop = conversationScroll.scrollHeight;
-		}
-
-		// Conversation group toggle handlers
-		document.querySelectorAll('.conversation-group .btn-toggle-group').forEach(function(btn) {
-			btn.addEventListener('click', function(e) {
-				e.stopPropagation();
-				var group = this.closest('.conversation-group');
-				var isSelected = group.dataset.selected === 'true';
-				group.dataset.selected = !isSelected;
-				this.textContent = isSelected ? '+' : '✓';
-				var label = group.querySelector('.toggle-label');
-				if (label) {
-					label.textContent = isSelected ? 'Excluded' : 'Included';
-				}
-				updateConversationCount();
-			});
-		});
-
-		// Initial count
-		updateConversationCount();
-
-		// Load more button
 		var loadMoreBtn = document.getElementById('loadMoreBtn');
 		if (loadMoreBtn) {
 			loadMoreBtn.addEventListener('click', loadMoreMessages);
 		}
 
-		// Load models
 		loadLocalModels();
 
-		// Enter key to generate
 		var aiPrompt = document.getElementById('aiPrompt');
 		if (aiPrompt) {
 			aiPrompt.addEventListener('keypress', function(e) {
@@ -671,6 +722,10 @@
 					generateDraft();
 				}
 			});
+		}
+
+		if (config.activeChatId && config.beeperToken) {
+			loadInitialMessages();
 		}
 	});
 })();

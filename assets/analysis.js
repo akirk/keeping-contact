@@ -12,6 +12,14 @@
 	var isLoading = false;
 	var INITIAL_LIMIT = 5000;
 	var LOAD_MORE_BATCH = 1000;
+	var beeper = null;
+
+	function getBeeperClient() {
+		if (!beeper && config.beeperToken) {
+			beeper = new BeeperClient(config.beeperToken, config.beeperApiBase);
+		}
+		return beeper;
+	}
 
 	function getDateLimit() {
 		var limit = new Date();
@@ -38,28 +46,23 @@
 		var state = chatStates[chatId];
 		if (!state.hasMore || state.hitDateLimit) return [];
 
-		var messages = [];
-		var body = 'action=kc_beeper_messages&chat_id=' + encodeURIComponent(chatId) + '&_wpnonce=' + config.nonce;
-		if (state.cursor) {
-			body += '&cursor=' + encodeURIComponent(state.cursor);
-		}
-
-		var response = await fetch(config.ajaxUrl, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-			body: body
-		});
-
-		var data = await response.json();
-
-		if (!data.success || !data.data.messages) {
+		var client = getBeeperClient();
+		if (!client) {
 			state.hasMore = false;
 			return [];
 		}
 
+		var result = await client.getRecentContext(chatId, 30, state.cursor);
+
+		if (!result.messages || result.messages.length === 0) {
+			state.hasMore = false;
+			return [];
+		}
+
+		var messages = [];
 		var oldestInBatch = null;
-		for (var i = 0; i < data.data.messages.length; i++) {
-			var msg = data.data.messages[i];
+		for (var i = 0; i < result.messages.length; i++) {
+			var msg = result.messages[i];
 			var msgDate = new Date(msg.date);
 
 			if (dateLimit && msgDate < dateLimit) {
@@ -79,8 +82,8 @@
 			state.oldestFetched = oldestInBatch;
 		}
 
-		state.cursor = data.data.next_cursor;
-		state.hasMore = data.data.has_more && !state.hitDateLimit;
+		state.cursor = result.next_cursor;
+		state.hasMore = result.has_more && !state.hitDateLimit;
 
 		return messages;
 	}
