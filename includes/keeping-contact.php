@@ -495,12 +495,12 @@ class KeepingContact {
 		$status_class = str_replace( '_', '-', $stats['status'] );
 		?>
 		<div class="kc-sidebar-section">
-			<div class="kc-sidebar-header">
-				<h3><a href="<?php echo esc_url( $this->crm->build_url( 'outreach' ) ); ?>">Keeping Contact</a></h3>
+			<a href="<?php echo esc_url( $this->crm->build_url( 'outreach' ) ); ?>" class="kc-sidebar-header">
+				<h3>Keeping Contact</h3>
 				<span class="kc-sidebar-badge status-badge <?php echo esc_attr( $status_class ); ?>">
 					<?php echo esc_html( $status_labels[ $stats['status'] ] ); ?>
 				</span>
-			</div>
+			</a>
 
 				<div class="kc-sidebar-content">
 				<?php if ( $stats['status'] !== 'no_schedule' ) : ?>

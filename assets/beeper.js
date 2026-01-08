@@ -7,6 +7,7 @@
 
 	var config = window.kcBeeperConfig || {};
 	var beeper = null;
+	var searchDebounceTimer = null;
 
 	function getBeeperClient() {
 		if (!beeper && config.beeperToken) {
@@ -18,37 +19,49 @@
 	window.kcBeeperSearch = async function(username, name) {
 		document.getElementById('kcBeeperUsername').value = username;
 		document.getElementById('kcBeeperModal').style.display = 'flex';
-		document.getElementById('kcBeeperSearching').style.display = 'block';
+
 		var resultsDiv = document.getElementById('kcBeeperResults');
 		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
 
-		var client = getBeeperClient();
-		if (!client) {
-			document.getElementById('kcBeeperSearching').style.display = 'none';
-			kcBeeperShowError('Beeper not configured');
-			return;
-		}
+		var searchInput = document.createElement('input');
+		searchInput.type = 'text';
+		searchInput.id = 'kcBeeperSearchInput';
+		searchInput.className = 'kc-search-input';
+		searchInput.placeholder = 'Search by name or phone...';
+		searchInput.value = name || '';
 
-		var result = await client.searchChats(name, 10);
+		searchInput.addEventListener('input', function() {
+			var query = searchInput.value.trim();
+			clearTimeout(searchDebounceTimer);
+			if (query) {
+				searchDebounceTimer = setTimeout(function() {
+					kcBeeperPerformSearch(query);
+				}, 300);
+			}
+		});
 
-		document.getElementById('kcBeeperSearching').style.display = 'none';
+		resultsDiv.appendChild(searchInput);
 
-		if (result.success) {
-			kcBeeperRenderResults({ success: true, data: { chats: result.data.items, queries: [name] } }, name);
-		} else {
-			kcBeeperShowError(result.error || 'Search failed');
-		}
+		var resultsContainer = document.createElement('div');
+		resultsContainer.id = 'kcBeeperResultsList';
+		resultsDiv.appendChild(resultsContainer);
+
+		searchInput.focus();
+
+		kcBeeperPerformSearch(name);
 	};
 
 	async function kcBeeperPerformSearch(query) {
-		var resultsDiv = document.getElementById('kcBeeperResults');
-		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
+		var resultsContainer = document.getElementById('kcBeeperResultsList');
+		if (!resultsContainer) return;
+
+		while (resultsContainer.firstChild) resultsContainer.removeChild(resultsContainer.firstChild);
 
 		var searchingDiv = document.createElement('div');
 		searchingDiv.className = 'kc-searching';
 		searchingDiv.style.display = 'block';
 		searchingDiv.textContent = 'Searching...';
-		resultsDiv.appendChild(searchingDiv);
+		resultsContainer.appendChild(searchingDiv);
 
 		var client = getBeeperClient();
 		if (!client) {
@@ -59,71 +72,28 @@
 		var result = await client.searchChats(query, 10);
 
 		if (result.success) {
-			kcBeeperRenderResults({ success: true, data: { chats: result.data.items, queries: [query] } }, query);
+			kcBeeperRenderResults(result.data.items || []);
 		} else {
 			kcBeeperShowError(result.error || 'Search failed');
 		}
 	}
 
-	function kcBeeperRenderResults(data, name) {
-		var resultsDiv = document.getElementById('kcBeeperResults');
-		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
+	function kcBeeperRenderResults(chats) {
+		var resultsContainer = document.getElementById('kcBeeperResultsList');
+		if (!resultsContainer) return;
 
-		var searchDiv = document.createElement('div');
-		searchDiv.className = 'kc-search-form';
+		while (resultsContainer.firstChild) resultsContainer.removeChild(resultsContainer.firstChild);
 
-		if (data.data && data.data.queries && data.data.queries.length > 0) {
-			var queriesDiv = document.createElement('div');
-			queriesDiv.className = 'kc-search-queries';
-			queriesDiv.textContent = 'Searched for: ' + data.data.queries.join(', ');
-			searchDiv.appendChild(queriesDiv);
-		}
-
-		var inputWrapper = document.createElement('div');
-		inputWrapper.className = 'kc-search-input-wrapper';
-
-		var searchInput = document.createElement('input');
-		searchInput.type = 'text';
-		searchInput.id = 'kcBeeperSearchInput';
-		searchInput.className = 'kc-search-input';
-		searchInput.placeholder = 'Search by name or phone...';
-		searchInput.value = name || '';
-
-		var searchBtn = document.createElement('button');
-		searchBtn.type = 'button';
-		searchBtn.className = 'btn btn-primary kc-search-btn';
-		searchBtn.textContent = 'Search';
-		searchBtn.onclick = function() {
-			var query = searchInput.value.trim();
-			if (query) {
-				kcBeeperPerformSearch(query);
-			}
-		};
-
-		searchInput.addEventListener('keypress', function(e) {
-			if (e.key === 'Enter') {
-				var query = searchInput.value.trim();
-				if (query) {
-					kcBeeperPerformSearch(query);
-				}
-			}
-		});
-
-		inputWrapper.appendChild(searchInput);
-		inputWrapper.appendChild(searchBtn);
-		searchDiv.appendChild(inputWrapper);
-		resultsDiv.appendChild(searchDiv);
-
-		if (data.success && data.data.chats && data.data.chats.length > 0) {
-			if (data.data.chats.length === 1) {
-				var chat = data.data.chats[0];
+		if (chats && chats.length > 0) {
+			if (chats.length === 1) {
+				var chat = chats[0];
 				var chatName = getChatName(chat);
 				var chatPhone = getChatPhone(chat);
 
 				var autoConnectDiv = document.createElement('div');
 				autoConnectDiv.className = 'kc-auto-connect';
 				autoConnectDiv.textContent = 'Found 1 match: ' + chatName + '. Connecting...';
-				resultsDiv.appendChild(autoConnectDiv);
+				resultsContainer.appendChild(autoConnectDiv);
 
 				setTimeout(function() {
 					kcBeeperLink(chat.id, chatPhone);
@@ -131,12 +101,7 @@
 				return;
 			}
 
-			var hint = document.createElement('div');
-			hint.className = 'kc-results-hint';
-			hint.textContent = 'Select a chat to link:';
-			resultsDiv.appendChild(hint);
-
-			data.data.chats.forEach(function(chat) {
+			chats.forEach(function(chat) {
 				var chatPhone = getChatPhone(chat);
 				var item = document.createElement('div');
 				item.className = 'kc-chat-result';
@@ -161,13 +126,13 @@
 					date.textContent = 'Last msg: ' + new Date(chat.lastActivity).toLocaleDateString();
 					item.appendChild(date);
 				}
-				resultsDiv.appendChild(item);
+				resultsContainer.appendChild(item);
 			});
 		} else {
 			var empty = document.createElement('div');
 			empty.className = 'kc-no-results';
-			empty.textContent = 'No chats found for "' + name + '"';
-			resultsDiv.appendChild(empty);
+			empty.textContent = 'No chats found';
+			resultsContainer.appendChild(empty);
 		}
 	}
 
@@ -193,12 +158,13 @@
 	}
 
 	function kcBeeperShowError(msg) {
-		var resultsDiv = document.getElementById('kcBeeperResults');
-		while (resultsDiv.firstChild) resultsDiv.removeChild(resultsDiv.firstChild);
+		var resultsContainer = document.getElementById('kcBeeperResultsList');
+		if (!resultsContainer) return;
+		while (resultsContainer.firstChild) resultsContainer.removeChild(resultsContainer.firstChild);
 		var err = document.createElement('div');
 		err.className = 'kc-error';
 		err.textContent = 'Error: ' + msg;
-		resultsDiv.appendChild(err);
+		resultsContainer.appendChild(err);
 	}
 
 	window.kcBeeperLink = function(chatId, phone) {
@@ -359,6 +325,7 @@
 	document.addEventListener('DOMContentLoaded', function() {
 		var modal = document.getElementById('kcBeeperModal');
 		if (modal) {
+			document.body.appendChild(modal);
 			modal.addEventListener('click', function(e) {
 				if (e.target === this) kcBeeperModalClose();
 			});

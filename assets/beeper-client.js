@@ -61,10 +61,10 @@ class BeeperClient {
 			return result;
 		}
 
+		const allChats = result.data.items || [];
 		const chats = [];
-		const inGroups = result.data.results?.in_groups || [];
 
-		for (const chat of inGroups) {
+		for (const chat of allChats) {
 			if (chat.type === 'single') {
 				chats.push(chat);
 				if (chats.length >= limit) break;

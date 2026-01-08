@@ -248,6 +248,12 @@ img.emoji {
 	display: flex;
 }
 
+.kc-modal {
+	align-items: flex-start;
+	padding-top: 10vh;
+	isolation: isolate;
+}
+
 .log-modal-content,
 .kc-modal-content {
 	background: var(--kc-card-bg);
@@ -258,6 +264,8 @@ img.emoji {
 	margin: 20px;
 	max-height: 80vh;
 	overflow-y: auto;
+	position: relative;
+	z-index: 10001;
 }
 
 .log-modal h3,
@@ -331,7 +339,7 @@ img.emoji {
 	padding: 12px;
 	border: 1px solid var(--kc-border-color);
 	border-radius: 6px;
-	margin-bottom: 8px;
+	margin-top: 8px;
 	cursor: pointer;
 	display: flex;
 	justify-content: space-between;
@@ -816,34 +824,58 @@ img.emoji {
 
 /* Person Sidebar Section */
 .kc-sidebar-section {
-	margin-top: 30px;
+	margin-top: 20px;
+	padding-top: 15px;
+	border-top: 1px solid var(--kc-border-color);
 }
 
 .kc-sidebar-header {
-	margin-bottom: 12px;
+	margin-bottom: 10px;
 	display: flex;
-	align-items: center;
+	align-items: baseline;
 	gap: 8px;
+	text-decoration: none;
+	color: inherit;
+	border-bottom: 2px solid var(--kc-link-color);
+	padding-bottom: 6px;
 }
 
-.kc-sidebar-header h3 {
+.kc-sidebar-header:hover {
+	color: var(--kc-link-color);
+}
+
+.events-sidebar .kc-sidebar-header h3 {
 	margin: 0;
+	color: inherit;
+	border-bottom: 0;
+	padding-bottom: 0;
 }
 
 .kc-sidebar-badge {
-	font-size: 0.75em;
-	padding: 2px 8px;
-	border-radius: 4px;
+	font-size: 0.65em;
+	font-weight: 500;
+	padding: 2px 6px;
+	border-radius: 3px;
 	color: white;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	position: relative;
+	top: -1px;
 }
 
 .kc-sidebar-content {
-	font-size: 0.95em;
-	line-height: 1.6;
+	font-size: 0.9em;
+	line-height: 1.7;
+	color: var(--kc-text-secondary);
+}
+
+.kc-sidebar-content strong {
+	color: var(--kc-text-color);
+	font-weight: 500;
 }
 
 .kc-sidebar-row {
-	margin-bottom: 4px;
+	margin-bottom: 6px;
 }
 
 .kc-recent-contacts {
@@ -920,19 +952,21 @@ a.kc-beeper-chat-info:hover {
 
 .kc-beeper-add {
 	display: inline-block;
-	margin-top: 8px;
-	padding: 4px 10px;
-	border: 1px dashed var(--kc-border-color);
+	margin-top: 10px;
+	padding: 6px 12px;
+	border: 1px solid var(--kc-border-color);
 	border-radius: 4px;
-	background: transparent;
+	background: var(--kc-bg-subtle);
 	cursor: pointer;
 	font-size: 0.85em;
-	color: var(--kc-text-muted);
+	color: var(--kc-text-secondary);
+	transition: all 0.15s ease;
 }
 
 .kc-beeper-add:hover {
 	border-color: var(--kc-link-color);
 	color: var(--kc-link-color);
+	background: transparent;
 }
 
 .kc-beeper-analysis-link {
@@ -2189,6 +2223,60 @@ a.kc-beeper-chat-info:hover {
 
 .insight-card li {
 	margin-bottom: 4px;
+}
+
+/* Sidebar Sections (used in person sidebar) */
+.sidebar-section {
+	margin-top: 20px;
+	padding-top: 15px;
+	border-top: 1px solid var(--kc-border-color);
+}
+
+.sidebar-section h3 {
+	margin: 0 0 10px 0;
+	font-size: 1em;
+	font-weight: 600;
+}
+
+.sidebar-section h3 a {
+	color: var(--kc-link-color);
+	text-decoration: none;
+}
+
+.sidebar-section h3 a:hover {
+	text-decoration: underline;
+}
+
+.sidebar-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.sidebar-list li {
+	padding: 4px 0;
+}
+
+.sidebar-list a {
+	color: var(--kc-text-color);
+	text-decoration: none;
+}
+
+.sidebar-list a:hover {
+	color: var(--kc-link-color);
+}
+
+.sidebar-list li:has(.sidebar-meta) {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+}
+
+.sidebar-meta {
+	font-size: 0.85em;
+	color: var(--kc-text-muted);
+	flex-shrink: 0;
 }
 
 /* Quick Schedule Buttons */
