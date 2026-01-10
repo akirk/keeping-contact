@@ -3,7 +3,7 @@
  * Plugin Name: Keeping Contact
  * Description: Track contact frequency and outreach with your network. Integrates with Personal CRM.
  * Version: 1.0.0
- * Author: Alex
+ * Author: Alex Kirk
  * Requires Plugins: personal-crm
  */
 
