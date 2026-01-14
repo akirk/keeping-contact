@@ -76,7 +76,7 @@ $beeper_token = get_option( 'keeping_contact_beeper_token', '' );
 					       value="<?php echo esc_attr( $beeper_token ); ?>"
 					       placeholder="Enter your Beeper API token">
 					<p class="help-text">
-						To get a token: Open Beeper Desktop → Settings → Developer → Create API Token
+						To get a token: Open Beeper Desktop → Settings → Developers → scroll to "Approved connections" → click the + button
 					</p>
 				</div>
 
