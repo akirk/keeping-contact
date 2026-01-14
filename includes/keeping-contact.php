@@ -346,17 +346,22 @@ class KeepingContact {
 		$username = sanitize_text_field( $_POST['username'] ?? '' );
 		$frequency = intval( $_POST['frequency'] ?? 0 );
 
-		if ( empty( $username ) || $frequency <= 0 ) {
-			wp_send_json_error( 'Username and frequency required' );
+		if ( empty( $username ) ) {
+			wp_send_json_error( 'Username required' );
 		}
 
 		$storage = self::get_storage();
-		$storage->save_schedule( $username, [
-			'frequency_days' => $frequency,
-			'priority'       => 'normal',
-			'paused'         => 0,
-			'notes'          => '',
-		] );
+
+		if ( $frequency > 0 ) {
+			$storage->save_schedule( $username, [
+				'frequency_days' => $frequency,
+				'priority'       => 'normal',
+				'paused'         => 0,
+				'notes'          => '',
+			] );
+		} else {
+			$storage->delete_schedule( $username );
+		}
 
 		wp_send_json_success( [ 'saved' => true ] );
 	}
@@ -477,35 +482,55 @@ class KeepingContact {
 	public function render_person_sidebar( $person, $is_team_member ) {
 		$stats = $this->storage->get_contact_stats( $person->username );
 
-		$status_labels = [
-			'overdue'         => 'Overdue',
-			'due_soon'        => 'Due Soon',
-			'on_track'        => 'On Track',
-			'never_contacted' => 'Never Contacted',
-			'paused'          => 'Paused',
-			'no_schedule'     => 'No Schedule',
-		];
-
 		// Get Beeper chat IDs
 		$chat_ids = [];
 		if ( $this->beeper->is_configured() ) {
 			$chat_ids = $this->storage->get_beeper_chats( $person->username );
 		}
 
-		$status_class = str_replace( '_', '-', $stats['status'] );
+		$current_frequency = $stats['schedule']['frequency_days'] ?? '';
 		?>
 		<div class="kc-sidebar-section">
-			<a href="<?php echo esc_url( $this->crm->build_url( 'outreach' ) ); ?>" class="kc-sidebar-header">
-				<h3>Keeping Contact</h3>
-				<span class="kc-sidebar-badge status-badge <?php echo esc_attr( $status_class ); ?>">
-					<?php echo esc_html( $status_labels[ $stats['status'] ] ); ?>
-				</span>
-			</a>
+			<div class="kc-sidebar-header">
+				<a href="<?php echo esc_url( $this->crm->build_url( 'outreach' ) ); ?>">
+					<h3>Keeping Contact</h3>
+				</a>
+				<select class="kc-schedule-dropdown" onchange="kcSetSchedule(this, '<?php echo esc_js( $person->username ); ?>')">
+					<option value="" <?php selected( $current_frequency, '' ); ?>>No Schedule</option>
+					<option value="7" <?php selected( $current_frequency, 7 ); ?>>Weekly</option>
+					<option value="14" <?php selected( $current_frequency, 14 ); ?>>Every 2 weeks</option>
+					<option value="30" <?php selected( $current_frequency, 30 ); ?>>Monthly</option>
+					<option value="60" <?php selected( $current_frequency, 60 ); ?>>Every 2 months</option>
+					<option value="90" <?php selected( $current_frequency, 90 ); ?>>Quarterly</option>
+					<option value="180" <?php selected( $current_frequency, 180 ); ?>>Every 6 months</option>
+					<option value="365" <?php selected( $current_frequency, 365 ); ?>>Yearly</option>
+				</select>
+				<script>
+				function kcSetSchedule(el, username) {
+					el.disabled = true;
+					fetch('<?php echo esc_url( admin_url( 'admin-ajax.php' ) ); ?>', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+						body: 'action=kc_set_schedule&username=' + encodeURIComponent(username) + '&frequency=' + el.value + '&_wpnonce=<?php echo wp_create_nonce( 'kc_beeper' ); ?>'
+					})
+					.then(function(r) { return r.json(); })
+					.then(function(data) {
+						if (data.success) {
+							location.reload();
+						} else {
+							el.disabled = false;
+							alert('Error saving schedule');
+						}
+					})
+					.catch(function() {
+						el.disabled = false;
+						alert('Error saving schedule');
+					});
+				}
+				</script>
+			</div>
 
 				<div class="kc-sidebar-content">
-				<?php if ( $stats['status'] !== 'no_schedule' ) : ?>
-				<div class="kc-sidebar-row"><strong>Frequency:</strong> <?php echo esc_html( $this->format_frequency( $stats['schedule']['frequency_days'] ) ); ?></div>
-				<?php endif; ?>
 
 				<?php if ( $stats['last_contact'] ) :
 					$days_ago = floor( ( time() - strtotime( $stats['last_contact']['contact_date'] ) ) / 86400 );

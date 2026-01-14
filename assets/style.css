@@ -834,13 +834,16 @@ img.emoji {
 	display: flex;
 	align-items: baseline;
 	gap: 8px;
-	text-decoration: none;
-	color: inherit;
 	border-bottom: 2px solid var(--kc-link-color);
 	padding-bottom: 6px;
 }
 
-.kc-sidebar-header:hover {
+.kc-sidebar-header > a {
+	text-decoration: none;
+	color: inherit;
+}
+
+.kc-sidebar-header > a:hover {
 	color: var(--kc-link-color);
 }
 
@@ -850,6 +853,7 @@ img.emoji {
 	border-bottom: 0;
 	padding-bottom: 0;
 }
+
 
 .kc-sidebar-badge {
 	font-size: 0.65em;
@@ -2323,4 +2327,21 @@ a.kc-beeper-chat-info:hover {
 /* No schedule badge */
 .status-badge.no-schedule {
 	background: var(--kc-text-secondary);
+}
+
+/* Schedule dropdown in sidebar header */
+.kc-schedule-dropdown {
+	font-size: 0.65em;
+	font-weight: 500;
+	padding: 2px 6px;
+	border-radius: 3px;
+	background: var(--kc-text-secondary);
+	color: white;
+	border: none;
+	cursor: pointer;
+}
+
+.kc-schedule-dropdown:disabled {
+	opacity: 0.7;
+	cursor: wait;
 }
