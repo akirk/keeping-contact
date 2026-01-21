@@ -4,7 +4,6 @@
  * Description: Track contact frequency and outreach with your network. Integrates with Personal CRM.
  * Version: 1.0.0
  * Author: Alex Kirk
- * Requires Plugins: personal-crm
  */
 
 namespace KeepingContact;
@@ -30,9 +29,24 @@ register_activation_hook( __FILE__, function() {
 	$storage->create_tables();
 } );
 
-KeepingContact::register_ajax_handlers();
+// Check if Personal CRM is available.
+// We use class_exists() instead of the "Requires Plugins" header because when
+// Personal CRM is loaded from GitHub in WordPress Playground, the plugin slug
+// becomes incorrect (e.g., "personal-crm-tree-main" instead of "personal-crm").
+add_action( 'plugins_loaded', function() {
+	if ( ! class_exists( 'PersonalCRM\PersonalCrm' ) ) {
+		add_action( 'admin_notices', function() {
+			echo '<div class="notice notice-error"><p><strong>Keeping Contact</strong> requires the Personal CRM plugin to be installed and activated.</p></div>';
+		} );
+		return;
+	}
+	KeepingContact::register_ajax_handlers();
+}, 5 );
 
 add_action( 'personal_crm_loaded', function( $crm ) {
+	if ( ! class_exists( 'PersonalCRM\PersonalCrm' ) ) {
+		return;
+	}
 	// Register tables for export/import
 	$crm->register_export_table( 'keeping_contact_schedules', array(
 		'unique_key' => 'username',
