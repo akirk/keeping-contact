@@ -37,6 +37,16 @@ class KeepingContact {
 	}
 
 	/**
+	 * Strip invisible Unicode control characters from a string.
+	 *
+	 * Removes bidirectional formatting characters (U+200E-U+200F, U+2066-U+2069),
+	 * zero-width characters (U+200B-U+200D), and byte order marks (U+FEFF).
+	 */
+	public static function strip_invisible_chars( $string ) {
+		return preg_replace( '/[\x{200B}-\x{200F}\x{2066}-\x{2069}\x{FEFF}]/u', '', $string );
+	}
+
+	/**
 	 * Enqueue keeping-contact styles
 	 */
 	private function enqueue_styles() {
@@ -390,10 +400,10 @@ class KeepingContact {
 			wp_send_json_error( 'Chat ID required' );
 		}
 
-		$name = sanitize_text_field( $_POST['name'] ?? '' );
+		$name = self::strip_invisible_chars( sanitize_text_field( $_POST['name'] ?? '' ) );
 		$phone = sanitize_text_field( $_POST['phone'] ?? '' );
 
-		if ( empty( $name ) ) {
+		if ( empty( trim( $name ) ) ) {
 			$name = 'Unknown Contact';
 		}
 
