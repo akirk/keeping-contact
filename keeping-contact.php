@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Keeping Contact
  * Description: Track contact frequency and outreach with your network. Integrates with Personal CRM.
- * Version: 1.0.0
+ * Version: 0.9.0
  * Author: Alex Kirk
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
