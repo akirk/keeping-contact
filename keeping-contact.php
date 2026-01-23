@@ -4,6 +4,8 @@
  * Description: Track contact frequency and outreach with your network. Integrates with Personal CRM.
  * Version: 1.0.0
  * Author: Alex Kirk
+ * License: GPL v2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  */
 
 namespace KeepingContact;
@@ -19,11 +21,16 @@ if ( file_exists( WP_PLUGIN_DIR . '/personal-crm/vendor/autoload.php' ) ) {
 	require_once WP_PLUGIN_DIR . '/personal-crm/vendor/autoload.php';
 }
 
-require_once KEEPING_CONTACT_PATH . 'includes/storage.php';
-require_once KEEPING_CONTACT_PATH . 'includes/beeper.php';
-require_once KEEPING_CONTACT_PATH . 'includes/keeping-contact.php';
+if ( class_exists( '\WpApp\BaseStorage' ) ) {
+	require_once KEEPING_CONTACT_PATH . 'includes/storage.php';
+	require_once KEEPING_CONTACT_PATH . 'includes/beeper.php';
+	require_once KEEPING_CONTACT_PATH . 'includes/keeping-contact.php';
+}
 
 register_activation_hook( __FILE__, function() {
+	if ( ! class_exists( '\WpApp\BaseStorage' ) ) {
+		return;
+	}
 	global $wpdb;
 	$storage = new Storage( $wpdb );
 	$storage->create_tables();
