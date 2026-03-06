@@ -4,6 +4,7 @@
  * Description: Track contact frequency and outreach with your network. Integrates with Personal CRM.
  * Version: 0.9.0
  * Author: Alex Kirk
+ * Author URI: https://alex.kirk.at/
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  */
@@ -25,6 +26,7 @@ if ( class_exists( '\WpApp\BaseStorage' ) ) {
 	require_once KEEPING_CONTACT_PATH . 'includes/storage.php';
 	require_once KEEPING_CONTACT_PATH . 'includes/beeper.php';
 	require_once KEEPING_CONTACT_PATH . 'includes/keeping-contact.php';
+	require_once KEEPING_CONTACT_PATH . 'includes/abilities.php';
 }
 
 register_activation_hook( __FILE__, function() {
@@ -48,6 +50,7 @@ add_action( 'plugins_loaded', function() {
 		return;
 	}
 	KeepingContact::register_ajax_handlers();
+	register_abilities();
 }, 5 );
 
 add_action( 'personal_crm_loaded', function( $crm ) {
