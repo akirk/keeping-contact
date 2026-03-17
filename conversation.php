@@ -310,8 +310,10 @@ $local_base_url = LocalLLM::get_base_url();
 	if ( function_exists( 'wp_app_enqueue_script' ) ) {
 		wp_app_enqueue_script( 'personal-crm-local-llm', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/local-llm.js', [], '1.0', true );
 		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true );
+		wp_localize_script( 'kc-beeper-client', 'BeeperClientConfig', KeepingContact::get_beeper_client_config() );
 		wp_app_enqueue_script( 'kc-conversation', plugin_dir_url( __FILE__ ) . 'assets/conversation.js', [ 'personal-crm-local-llm', 'kc-beeper-client' ], '1.0', true );
 	} else {
+		echo '<script>var BeeperClientConfig = ' . wp_json_encode( KeepingContact::get_beeper_client_config() ) . ';</script>';
 		echo '<script src="' . esc_url( plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/local-llm.js' ) . '"></script>';
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js' ) . '"></script>';
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/conversation.js' ) . '"></script>';

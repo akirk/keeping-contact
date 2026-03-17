@@ -316,17 +316,19 @@ $chat_to_username = $kc->storage->get_all_beeper_chat_mappings();
 		assignGroupsUrl: <?php echo json_encode( home_url( '/crm/assign-groups' ) ); ?>,
 		beeperToken: <?php echo json_encode( $beeper->get_token() ); ?>
 	};
+	var beeper;
 
 	var selectedIds = new Set();
 	var importedUsernames = [];
 	var hideLinked = true;
 
 	async function init() {
+		beeper = new BeeperClient(kcConfig.beeperToken);
+
 		document.getElementById('filterInput').addEventListener('input', function() {
 			applyFilters();
 		});
 
-		// Load chats directly from Beeper API
 		await loadAllChatsFromBeeper();
 	}
 
@@ -334,38 +336,19 @@ $chat_to_username = $kc->storage->get_all_beeper_chat_mappings();
 		var loadingEl = document.getElementById('chatList');
 		loadingEl.innerHTML = '<div class="empty-state">Loading chats from Beeper...</div>';
 
-		var allChats = [];
-		var cursor = null;
-		var pageCount = 0;
+		var result = await beeper.loadAllChats();
 
-		try {
-			while (true) {
-				pageCount++;
-				var url = 'http://localhost:23373/v1/chats';
-				if (cursor) {
-					url += '?cursor=' + encodeURIComponent(cursor) + '&direction=before';
-				}
-
-				var response = await fetch(url, {
-					headers: { 'Authorization': 'Bearer ' + kcConfig.beeperToken }
-				});
-				var data = await response.json();
-
-				var items = data.items || [];
-				allChats = allChats.concat(items);
-
-				console.log('Page ' + pageCount + ': ' + items.length + ' chats, total: ' + allChats.length + ', hasMore: ' + data.hasMore);
-
-				if (!data.hasMore || !data.oldestCursor) {
-					break;
-				}
-				cursor = data.oldestCursor;
-			}
-		} catch (err) {
-			console.error('Error loading chats:', err);
-			loadingEl.innerHTML = '<div class="empty-state">Error loading chats from Beeper</div>';
+		if (!result.success) {
+			console.error('Error loading chats:', result.error);
+			while (loadingEl.firstChild) loadingEl.removeChild(loadingEl.firstChild);
+			var errDiv = document.createElement('div');
+			errDiv.className = 'empty-state';
+			errDiv.textContent = 'Error loading chats from Beeper';
+			loadingEl.appendChild(errDiv);
 			return;
 		}
+
+		var allChats = result.data.items;
 
 		// Filter to single chats and group by phone/identifier
 		var chatsByIdentifier = {};
@@ -722,6 +705,14 @@ $chat_to_username = $kc->storage->get_all_beeper_chat_mappings();
 	document.addEventListener('DOMContentLoaded', init);
 	</script>
 
+	<script>var BeeperClientConfig = <?php echo wp_json_encode( KeepingContact::get_beeper_client_config() ); ?>;</script>
+	<?php
+	if ( function_exists( 'wp_app_enqueue_script' ) ) {
+		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true );
+	} else {
+		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js' ) . '"></script>';
+	}
+	?>
 	<?php if ( function_exists( 'wp_app_body_close' ) ) wp_app_body_close(); ?>
 	<?php $crm->init_cmd_k_js(); ?>
 	<?php if ( function_exists( 'wp_app_footer' ) ) wp_app_footer(); ?>

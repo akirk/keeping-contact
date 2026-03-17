@@ -4,10 +4,65 @@
  * Makes direct requests to Beeper Desktop API (localhost:23373)
  */
 
+const BEEPER_DEMO_FIRST_NAMES = ['Alice', 'Bob', 'Carol', 'David', 'Emma', 'Frank', 'Grace', 'Henry', 'Isabel', 'James', 'Kate', 'Liam', 'Maya', 'Noah', 'Olivia', 'Peter', 'Quinn', 'Rachel', 'Sam', 'Tara'];
+const BEEPER_DEMO_LAST_NAMES  = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Wilson', 'Moore', 'Taylor', 'Anderson', 'Thomas', 'Jackson', 'White', 'Harris', 'Martin', 'Thompson', 'Young', 'Clark'];
+
 class BeeperClient {
 	constructor(token, apiBase = 'http://localhost:23373/v1') {
 		this.token = token;
 		this.apiBase = apiBase;
+		const cfg = window.BeeperClientConfig || {};
+		this.demoMode       = cfg.demoMode || false;
+		this.fakeFirstNames = (cfg.fakeNames && cfg.fakeNames.first && cfg.fakeNames.first.length) ? cfg.fakeNames.first : BEEPER_DEMO_FIRST_NAMES;
+		this.fakeLastNames  = (cfg.fakeNames && cfg.fakeNames.last  && cfg.fakeNames.last.length)  ? cfg.fakeNames.last  : BEEPER_DEMO_LAST_NAMES;
+	}
+
+	_fakeName(name, type = 'person') {
+		if (!name) return name;
+		if (this.demoMode) {
+			this._recordSeenName(name, type);
+			const override = this._getNameOverride(name);
+			if (override !== undefined && override !== '') return override;
+		}
+		let sum = 0;
+		for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
+		const first = this.fakeFirstNames[sum % this.fakeFirstNames.length];
+		if (name.trim().includes(' ')) {
+			return first + ' ' + this.fakeLastNames[(sum * 7 + 3) % this.fakeLastNames.length];
+		}
+		return first;
+	}
+
+	_getNameOverride(name) {
+		try {
+			const o = JSON.parse(localStorage.getItem('bdm_name_overrides') || '{}');
+			return o[name];
+		} catch(e) { return undefined; }
+	}
+
+	_recordSeenName(name, type) {
+		if (!name) return;
+		try {
+			const seen = JSON.parse(localStorage.getItem('bdm_seen_names') || '[]');
+			if (!seen.some(n => n.name === name)) {
+				seen.push({ name, type });
+				localStorage.setItem('bdm_seen_names', JSON.stringify(seen));
+			}
+		} catch(e) {}
+	}
+
+	_anonymizeChat(chat) {
+		if (!chat) return chat;
+		const c = Object.assign({}, chat);
+		if (c.title) c.title = this._fakeName(c.title, c.type || 'group');
+		if (c.participants && c.participants.items) {
+			c.participants = Object.assign({}, c.participants, {
+				items: c.participants.items.map(p => p.isSelf ? p : Object.assign({}, p, {
+					fullName: p.fullName ? this._fakeName(p.fullName, 'person') : p.fullName
+				}))
+			});
+		}
+		return c;
 	}
 
 	isConfigured() {
@@ -66,7 +121,7 @@ class BeeperClient {
 
 		for (const chat of allChats) {
 			if (chat.type === 'single') {
-				chats.push(chat);
+				chats.push(this.demoMode ? this._anonymizeChat(chat) : chat);
 				if (chats.length >= limit) break;
 			}
 		}
@@ -75,7 +130,11 @@ class BeeperClient {
 	}
 
 	async getChat(chatId) {
-		return this.request('/chats/' + encodeURIComponent(chatId));
+		const result = await this.request('/chats/' + encodeURIComponent(chatId));
+		if (result.success && this.demoMode) {
+			return Object.assign({}, result, { data: this._anonymizeChat(result.data) });
+		}
+		return result;
 	}
 
 	async getAllChats(limit = 200) {
@@ -97,7 +156,37 @@ class BeeperClient {
 			return bTime.localeCompare(aTime);
 		});
 
-		return { success: true, data: { items: chats } };
+		return { success: true, data: { items: this.demoMode ? chats.map(c => this._anonymizeChat(c)) : chats } };
+	}
+
+	async loadAllChats() {
+		const allChats = [];
+		let cursor = null;
+		let pageCount = 0;
+
+		while (true) {
+			pageCount++;
+			const params = cursor ? { cursor: cursor, direction: 'before' } : {};
+			const result = await this.request('/chats', { params });
+
+			if (!result.success) {
+				return result;
+			}
+
+			const items = result.data.items || [];
+			for (const chat of items) {
+				allChats.push(this.demoMode ? this._anonymizeChat(chat) : chat);
+			}
+
+			console.log('Page ' + pageCount + ': ' + items.length + ' chats, total: ' + allChats.length);
+
+			if (!result.data.hasMore || !result.data.oldestCursor) {
+				break;
+			}
+			cursor = result.data.oldestCursor;
+		}
+
+		return { success: true, data: { items: allChats } };
 	}
 
 	async getChatMessages(chatId, limit = 20, cursor = null, direction = 'before') {
@@ -172,9 +261,14 @@ class BeeperClient {
 			text = text.replace(/https?:\/\/\S+/gi, '');
 			text = text.replace(/\s+/g, ' ').trim();
 
+			const rawSender = msg.isSender ? 'You' : (msg.senderName || 'Them');
+			const sender = (this.demoMode && !msg.isSender && msg.senderName)
+				? this._fakeName(msg.senderName)
+				: rawSender;
+
 			context.push({
 				date: msg.timestamp,
-				sender: msg.isSender ? 'You' : (msg.senderName || 'Them'),
+				sender: sender,
 				text: text || '[link]',
 				is_sender: msg.isSender,
 				sort_key: msg.sortKey || null

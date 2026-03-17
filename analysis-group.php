@@ -171,8 +171,10 @@ if ( $beeper_configured ) {
 	<?php
 	if ( function_exists( 'wp_app_enqueue_script' ) ) {
 		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true );
+		wp_localize_script( 'kc-beeper-client', 'BeeperClientConfig', KeepingContact::get_beeper_client_config() );
 		wp_app_enqueue_script( 'kc-analysis-group', plugin_dir_url( __FILE__ ) . 'assets/analysis-group.js', [ 'kc-beeper-client' ], '1.0', true );
 	} else {
+		echo '<script>var BeeperClientConfig = ' . wp_json_encode( KeepingContact::get_beeper_client_config() ) . ';</script>';
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js' ) . '"></script>';
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/analysis-group.js' ) . '"></script>';
 	}

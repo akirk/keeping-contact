@@ -20,6 +20,10 @@ class KeepingContact {
 		$this->storage = new Storage( $wpdb );
 		$this->beeper = new Beeper();
 
+		add_filter( 'personal_crm_beeper_token', function ( $token ) {
+			return $token ?: $this->beeper->get_token();
+		} );
+
 		// Enqueue styles early
 		$this->enqueue_styles();
 
@@ -181,6 +185,13 @@ class KeepingContact {
 		add_action( 'wp_ajax_kc_render_sidebar', [ __CLASS__, 'static_ajax_render_sidebar' ] );
 		add_action( 'wp_ajax_kc_set_schedule', [ __CLASS__, 'static_ajax_set_schedule' ] );
 		add_action( 'wp_ajax_kc_beeper_import', [ __CLASS__, 'static_ajax_beeper_import' ] );
+	}
+
+	public static function get_beeper_client_config() {
+		return [
+			'demoMode'  => (bool) apply_filters( 'personal_crm_demo_mode', false ),
+			'fakeNames' => apply_filters( 'personal_crm_demo_names', [ 'first' => [], 'last' => [] ] ),
+		];
 	}
 
 	private static function get_beeper() {
@@ -1001,8 +1012,10 @@ class KeepingContact {
 		<?php
 		if ( function_exists( 'wp_app_enqueue_script' ) ) {
 			wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js', [], '1.0', true );
+			wp_localize_script( 'kc-beeper-client', 'BeeperClientConfig', self::get_beeper_client_config() );
 			wp_app_enqueue_script( 'kc-beeper', plugin_dir_url( __DIR__ ) . 'assets/beeper.js', [ 'kc-beeper-client' ], '1.0', true );
 		} else {
+			echo '<script>var BeeperClientConfig = ' . wp_json_encode( self::get_beeper_client_config() ) . ';</script>';
 			echo '<script src="' . esc_url( plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js' ) . '"></script>';
 			echo '<script src="' . esc_url( plugin_dir_url( __DIR__ ) . 'assets/beeper.js' ) . '"></script>';
 		}
