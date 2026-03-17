@@ -189,8 +189,8 @@ class KeepingContact {
 
 	public static function get_beeper_client_config() {
 		return [
-			'demoMode'  => (bool) apply_filters( 'personal_crm_demo_mode', false ),
-			'fakeNames' => apply_filters( 'personal_crm_demo_names', [ 'first' => [], 'last' => [] ] ),
+			'demoMode'  => (bool) apply_filters( 'beeper_demo_mode', false ),
+			'fakeNames' => apply_filters( 'beeper_demo_names', [ 'first' => [], 'last' => [] ] ),
 		];
 	}
 
