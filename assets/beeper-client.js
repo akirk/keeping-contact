@@ -109,8 +109,34 @@ class BeeperClient {
 		return this.request('/accounts');
 	}
 
+	async _getAccountsMap() {
+		if (this._accountsMap) {
+			return this._accountsMap;
+		}
+		const result = await this.getAccounts();
+		const map = {};
+		if (result.success && Array.isArray(result.data)) {
+			for (const account of result.data) {
+				if (account.accountID) {
+					map[account.accountID] = account.network || account.bridge?.type || '';
+				}
+			}
+		}
+		this._accountsMap = map;
+		return map;
+	}
+
+	_enrichChatWithNetwork(chat, accountsMap) {
+		if (chat.network || !chat.accountID) return chat;
+		const network = accountsMap[chat.accountID];
+		return network ? Object.assign({}, chat, { network }) : chat;
+	}
+
 	async searchChats(query, limit = 10) {
-		const result = await this.request('/chats/search', { params: { query: query } });
+		const [result, accountsMap] = await Promise.all([
+			this.request('/chats/search', { params: { query: query } }),
+			this._getAccountsMap()
+		]);
 
 		if (!result.success) {
 			return result;
@@ -121,7 +147,8 @@ class BeeperClient {
 
 		for (const chat of allChats) {
 			if (chat.type === 'single') {
-				chats.push(this.demoMode ? this._anonymizeChat(chat) : chat);
+				const enriched = this._enrichChatWithNetwork(chat, accountsMap);
+				chats.push(this.demoMode ? this._anonymizeChat(enriched) : enriched);
 				if (chats.length >= limit) break;
 			}
 		}
@@ -130,15 +157,23 @@ class BeeperClient {
 	}
 
 	async getChat(chatId) {
-		const result = await this.request('/chats/' + encodeURIComponent(chatId));
-		if (result.success && this.demoMode) {
-			return Object.assign({}, result, { data: this._anonymizeChat(result.data) });
+		const [result, accountsMap] = await Promise.all([
+			this.request('/chats/' + encodeURIComponent(chatId)),
+			this._getAccountsMap()
+		]);
+		if (!result.success) return result;
+		const enriched = this._enrichChatWithNetwork(result.data, accountsMap);
+		if (this.demoMode) {
+			return Object.assign({}, result, { data: this._anonymizeChat(enriched) });
 		}
-		return result;
+		return Object.assign({}, result, { data: enriched });
 	}
 
 	async getAllChats(limit = 200) {
-		const result = await this.request('/chats', { params: { limit: limit } });
+		const [result, accountsMap] = await Promise.all([
+			this.request('/chats', { params: { limit: limit } }),
+			this._getAccountsMap()
+		]);
 
 		if (!result.success) {
 			return result;
@@ -149,7 +184,9 @@ class BeeperClient {
 			return { success: true, data: { items: [] } };
 		}
 
-		const chats = items.filter(chat => chat.type === 'single');
+		const chats = items
+			.filter(chat => chat.type === 'single')
+			.map(chat => this._enrichChatWithNetwork(chat, accountsMap));
 		chats.sort((a, b) => {
 			const aTime = a.lastActivity || '';
 			const bTime = b.lastActivity || '';
@@ -163,6 +200,7 @@ class BeeperClient {
 		const allChats = [];
 		let cursor = null;
 		let pageCount = 0;
+		const accountsMap = await this._getAccountsMap();
 
 		while (true) {
 			pageCount++;
@@ -175,7 +213,8 @@ class BeeperClient {
 
 			const items = result.data.items || [];
 			for (const chat of items) {
-				allChats.push(this.demoMode ? this._anonymizeChat(chat) : chat);
+				const enriched = this._enrichChatWithNetwork(chat, accountsMap);
+				allChats.push(this.demoMode ? this._anonymizeChat(enriched) : enriched);
 			}
 
 			console.log('Page ' + pageCount + ': ' + items.length + ' chats, total: ' + allChats.length);
