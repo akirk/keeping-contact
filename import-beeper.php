@@ -708,7 +708,7 @@ $chat_to_username = $kc->storage->get_all_beeper_chat_mappings();
 	<script>var BeeperClientConfig = <?php echo wp_json_encode( KeepingContact::get_beeper_client_config() ); ?>;</script>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_script' ) ) {
-		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true );
+		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true, 'crm' );
 	} else {
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js' ) . '"></script>';
 	}

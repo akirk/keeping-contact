@@ -55,7 +55,7 @@ class KeepingContact {
 	 */
 	private function enqueue_styles() {
 		if ( function_exists( 'wp_app_enqueue_style' ) ) {
-			wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __DIR__ ) . 'assets/style.css' );
+			wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __DIR__ ) . 'assets/style.css', [], '1.0', 'crm' );
 		}
 	}
 
@@ -1011,9 +1011,9 @@ class KeepingContact {
 		</script>
 		<?php
 		if ( function_exists( 'wp_app_enqueue_script' ) ) {
-			wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js', [], '1.0', true );
+			wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js', [], '1.0', true, 'crm' );
 			wp_localize_script( 'kc-beeper-client', 'BeeperClientConfig', self::get_beeper_client_config() );
-			wp_app_enqueue_script( 'kc-beeper', plugin_dir_url( __DIR__ ) . 'assets/beeper.js', [ 'kc-beeper-client' ], '1.0', true );
+			wp_app_enqueue_script( 'kc-beeper', plugin_dir_url( __DIR__ ) . 'assets/beeper.js', [ 'kc-beeper-client' ], '1.0', true, 'crm' );
 		} else {
 			echo '<script>var BeeperClientConfig = ' . wp_json_encode( self::get_beeper_client_config() ) . ';</script>';
 			echo '<script src="' . esc_url( plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js' ) . '"></script>';

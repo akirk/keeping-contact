@@ -32,9 +32,9 @@ $beeper_token = get_option( 'keeping_contact_beeper_token', '' );
 	<title><?php echo function_exists( 'wp_app_title' ) ? wp_app_title( 'Outreach Settings' ) : 'Outreach Settings'; ?></title>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_style' ) ) {
-		wp_app_enqueue_style( 'personal-crm-style', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/style.css' );
-		wp_app_enqueue_style( 'personal-crm-cmd-k', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/cmd-k.css' );
-		wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __FILE__ ) . 'assets/style.css' );
+		wp_app_enqueue_style( 'personal-crm-style', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/style.css', [], '1.0', 'crm' );
+		wp_app_enqueue_style( 'personal-crm-cmd-k', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/cmd-k.css', [], '1.0', 'crm' );
+		wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __FILE__ ) . 'assets/style.css', [], '1.0', 'crm' );
 	}
 	?>
 	<?php if ( function_exists( 'wp_app_head' ) ) wp_app_head(); ?>
