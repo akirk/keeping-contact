@@ -73,9 +73,9 @@ if ( $beeper_configured ) {
 	<title><?php echo function_exists( 'wp_app_title' ) ? wp_app_title( 'Group Analysis: ' . $group->group_name ) : 'Group Analysis: ' . $group->group_name; ?></title>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_style' ) ) {
-		wp_app_enqueue_style( 'personal-crm-style', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/style.css', [], '1.0', 'crm' );
-		wp_app_enqueue_style( 'personal-crm-cmd-k', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/cmd-k.css', [], '1.0', 'crm' );
-		wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __FILE__ ) . 'assets/style.css', [], '1.0', 'crm' );
+		wp_app_enqueue_style( 'personal-crm-style', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/style.css', [], '1.0', 'personal-crm' );
+		wp_app_enqueue_style( 'personal-crm-cmd-k', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/cmd-k.css', [], '1.0', 'personal-crm' );
+		wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __FILE__ ) . 'assets/style.css', [], '1.0', 'personal-crm' );
 	}
 	?>
 	<?php if ( function_exists( 'wp_app_head' ) ) wp_app_head(); ?>
@@ -170,9 +170,9 @@ if ( $beeper_configured ) {
 	</script>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_script' ) ) {
-		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true, 'crm' );
+		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true, 'personal-crm' );
 		wp_localize_script( 'kc-beeper-client', 'BeeperClientConfig', KeepingContact::get_beeper_client_config() );
-		wp_app_enqueue_script( 'kc-analysis-group', plugin_dir_url( __FILE__ ) . 'assets/analysis-group.js', [ 'kc-beeper-client' ], '1.0', true, 'crm' );
+		wp_app_enqueue_script( 'kc-analysis-group', plugin_dir_url( __FILE__ ) . 'assets/analysis-group.js', [ 'kc-beeper-client' ], '1.0', true, 'personal-crm' );
 	} else {
 		echo '<script>var BeeperClientConfig = ' . wp_json_encode( KeepingContact::get_beeper_client_config() ) . ';</script>';
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js' ) . '"></script>';
