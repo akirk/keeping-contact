@@ -30,11 +30,11 @@ Keeping Contact is a WordPress plugin that extends the Personal CRM plugin to tr
 ### Routes
 
 Routes are registered via Personal CRM's routing system:
-- `/crm/outreach` - Outreach dashboard
-- `/crm/outreach/{person}` - Individual outreach page
-- `/crm/conversations/{person}` - Message drafting with AI assistant
-- `/crm/analysis/{person}` - Relationship analysis visualization
-- `/crm/analysis-group/{group}` - Group-level relationship analysis
+- `/personal-crm/outreach` - Outreach dashboard
+- `/personal-crm/outreach/{person}` - Individual outreach page
+- `/personal-crm/conversations/{person}` - Message drafting with AI assistant
+- `/personal-crm/analysis/{person}` - Relationship analysis visualization
+- `/personal-crm/analysis-group/{group}` - Group-level relationship analysis
 
 ### Beeper Integration
 

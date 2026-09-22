@@ -312,8 +312,8 @@ $chat_to_username = $kc->storage->get_all_beeper_chat_mappings();
 		nonce: <?php echo json_encode( wp_create_nonce( 'kc_beeper' ) ); ?>,
 		chats: [],
 		linkedChats: <?php echo json_encode( $chat_to_username ); ?>,
-		personUrlBase: <?php echo json_encode( home_url( '/crm/person/' ) ); ?>,
-		assignGroupsUrl: <?php echo json_encode( home_url( '/crm/assign-groups' ) ); ?>,
+		personUrlBase: <?php echo json_encode( home_url( '/personal-crm/person/' ) ); ?>,
+		assignGroupsUrl: <?php echo json_encode( home_url( '/personal-crm/assign-groups' ) ); ?>,
 		beeperToken: <?php echo json_encode( $beeper->get_token() ); ?>
 	};
 	var beeper;
@@ -708,7 +708,7 @@ $chat_to_username = $kc->storage->get_all_beeper_chat_mappings();
 	<script>var BeeperClientConfig = <?php echo wp_json_encode( KeepingContact::get_beeper_client_config() ); ?>;</script>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_script' ) ) {
-		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true );
+		wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js', [], '1.0', true, 'personal-crm' );
 	} else {
 		echo '<script src="' . esc_url( plugin_dir_url( __FILE__ ) . 'assets/beeper-client.js' ) . '"></script>';
 	}

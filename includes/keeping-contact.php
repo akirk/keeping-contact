@@ -55,7 +55,7 @@ class KeepingContact {
 	 */
 	private function enqueue_styles() {
 		if ( function_exists( 'wp_app_enqueue_style' ) ) {
-			wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __DIR__ ) . 'assets/style.css' );
+			wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __DIR__ ) . 'assets/style.css', [], '1.0', 'personal-crm' );
 		}
 	}
 
@@ -459,7 +459,7 @@ class KeepingContact {
 		wp_send_json_success( [
 			'username' => $username,
 			'name'     => $name,
-			'url'      => home_url( '/crm/person/' . $username ),
+			'url'      => home_url( '/personal-crm/person/' . $username ),
 		] );
 	}
 
@@ -941,20 +941,20 @@ class KeepingContact {
 		$params = $url_data['params'];
 
 		if ( str_contains( $base_url, 'outreach' ) && isset( $params['person'] ) ) {
-			$url = home_url( '/crm/outreach/' . $params['person'] );
+			$url = home_url( '/personal-crm/outreach/' . $params['person'] );
 			unset( $params['person'] );
 		}
 
 		if ( str_contains( $base_url, 'conversations' ) && isset( $params['person'] ) ) {
-			$url = home_url( '/crm/conversations/' . $params['person'] );
+			$url = home_url( '/personal-crm/conversations/' . $params['person'] );
 			unset( $params['person'] );
 		}
 
 		if ( str_contains( $base_url, 'analysis-group' ) && isset( $params['group'] ) ) {
-			$url = home_url( '/crm/analysis-group/' . $params['group'] );
+			$url = home_url( '/personal-crm/analysis-group/' . $params['group'] );
 			unset( $params['group'] );
 		} elseif ( str_contains( $base_url, 'analysis' ) && isset( $params['person'] ) ) {
-			$url = home_url( '/crm/analysis/' . $params['person'] );
+			$url = home_url( '/personal-crm/analysis/' . $params['person'] );
 			unset( $params['person'] );
 		}
 
@@ -1011,9 +1011,9 @@ class KeepingContact {
 		</script>
 		<?php
 		if ( function_exists( 'wp_app_enqueue_script' ) ) {
-			wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js', [], '1.0', true );
+			wp_app_enqueue_script( 'kc-beeper-client', plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js', [], '1.0', true, 'personal-crm' );
 			wp_localize_script( 'kc-beeper-client', 'BeeperClientConfig', self::get_beeper_client_config() );
-			wp_app_enqueue_script( 'kc-beeper', plugin_dir_url( __DIR__ ) . 'assets/beeper.js', [ 'kc-beeper-client' ], '1.0', true );
+			wp_app_enqueue_script( 'kc-beeper', plugin_dir_url( __DIR__ ) . 'assets/beeper.js', [ 'kc-beeper-client' ], '1.0', true, 'personal-crm' );
 		} else {
 			echo '<script>var BeeperClientConfig = ' . wp_json_encode( self::get_beeper_client_config() ) . ';</script>';
 			echo '<script src="' . esc_url( plugin_dir_url( __DIR__ ) . 'assets/beeper-client.js' ) . '"></script>';

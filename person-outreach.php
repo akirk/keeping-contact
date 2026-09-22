@@ -83,9 +83,9 @@ $frequency_labels = [
 	<title><?php echo function_exists( 'wp_app_title' ) ? wp_app_title( 'Outreach: ' . $person->get_display_name_with_nickname() ) : 'Outreach: ' . $person->get_display_name_with_nickname(); ?></title>
 	<?php
 	if ( function_exists( 'wp_app_enqueue_style' ) ) {
-		wp_app_enqueue_style( 'personal-crm-style', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/style.css' );
-		wp_app_enqueue_style( 'personal-crm-cmd-k', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/cmd-k.css' );
-		wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __FILE__ ) . 'assets/style.css' );
+		wp_app_enqueue_style( 'personal-crm-style', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/style.css', [], '1.0', 'personal-crm' );
+		wp_app_enqueue_style( 'personal-crm-cmd-k', plugin_dir_url( __DIR__ . '/../personal-crm/personal-crm.php' ) . 'assets/cmd-k.css', [], '1.0', 'personal-crm' );
+		wp_app_enqueue_style( 'keeping-contact', plugin_dir_url( __FILE__ ) . 'assets/style.css', [], '1.0', 'personal-crm' );
 	}
 	?>
 	<?php if ( function_exists( 'wp_app_head' ) ) wp_app_head(); ?>
